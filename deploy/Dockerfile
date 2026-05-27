@@ -56,7 +56,8 @@ COPY deploy/nginx.conf.template /etc/nginx/templates/default.conf.template
 COPY deploy/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 COPY deploy/start.sh /start.sh
 COPY deploy/start-bot.sh /start-bot.sh
-RUN sed -i 's/\r$//' /start.sh /start-bot.sh && chmod +x /start.sh /start-bot.sh
+COPY deploy/start-frontend.sh /start-frontend.sh
+RUN sed -i 's/\r$//' /start.sh /start-bot.sh /start-frontend.sh && chmod +x /start.sh /start-bot.sh /start-frontend.sh
 
 ENV ASPNETCORE_ENVIRONMENT=Production
 ENV NODE_ENV=production
