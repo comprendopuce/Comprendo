@@ -16,8 +16,9 @@ RUN dotnet publish src/Comprendo.Api/Comprendo.Api.csproj -c Release -o /app/api
 # ── Frontend Next.js (standalone) ───────────────────────────────────────────
 FROM node:20-bookworm AS frontend-build
 WORKDIR /app
-RUN corepack enable
-COPY frontend/package.json frontend/pnpm-lock.yaml ./
+# pnpm 9 explícito (lockfile v9); corepack en Docker suele fallar con ERR_UNKNOWN_BUILTIN_MODULE
+RUN npm install -g pnpm@9.15.9
+COPY frontend/package.json frontend/pnpm-lock.yaml frontend/pnpm-workspace.yaml ./
 RUN pnpm install --frozen-lockfile
 COPY frontend/ ./
 # Mismo origen: rutas relativas vía nginx
