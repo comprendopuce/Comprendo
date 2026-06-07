@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { HelpCircle, Bell, User } from "lucide-react"
+import { HelpCircle, User } from "lucide-react"
 
 interface NavbarProps {
   isLoggedIn?: boolean
@@ -28,15 +28,14 @@ export function Navbar({ isLoggedIn = false, onLogin, onLogout }: NavbarProps) {
 
   return (
     <nav className="sticky top-0 z-50 h-14 bg-[#f4f0d5] border-b border-[#F1D87C]/30 px-8 flex items-center justify-between">
-      {/* Logo */}
-      <button
-        onClick={() => router.push("/")}
-        className={`text-2xl font-black tracking-tight cursor-pointer hover:opacity-80 transition-opacity ${
+      {/* Logo — no navigation */}
+      <span
+        className={`text-2xl font-black tracking-tight select-none ${
           isLoggedIn ? "text-[#7297C9]" : "text-[#9E5A78]"
         }`}
       >
         Comprendo
-      </button>
+      </span>
 
       {/* Right side */}
       {!isLoggedIn ? (
@@ -58,9 +57,6 @@ export function Navbar({ isLoggedIn = false, onLogin, onLogout }: NavbarProps) {
         <div className="flex items-center gap-4">
           {/* Help button */}
           <IconButton icon={<HelpCircle className="h-5 w-5" />} tooltip="Ayuda" />
-          
-          {/* Notifications button */}
-          <IconButton icon={<Bell className="h-5 w-5" />} tooltip="Notificaciones" />
           
           {/* Profile button with dropdown */}
           <div className="relative" ref={dropdownRef}>

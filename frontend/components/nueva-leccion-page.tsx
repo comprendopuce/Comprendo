@@ -452,8 +452,9 @@ export function NuevaLeccionPage({
         await Promise.all(sendPromises)
       }
 
-      // 5. Navigate to the lesson detail screen
-      router.push(`/curso/${gradeId}/${encodeURIComponent(subject)}/lecciones/${activeLessonId}`)
+      // 5. Navigate to the lesson detail screen (full reload so LeccionDetallePage
+      //    re-fetches the updated estado=ENVIADA from the API)
+      window.location.href = `/curso/${gradeId}/${encodeURIComponent(subject)}/lecciones/${activeLessonId}`
     } catch (err) {
       addAssistantMessage(
         `❌ Error al publicar la lección: ${err instanceof Error ? err.message : "Error desconocido"}. Intenta de nuevo.`
