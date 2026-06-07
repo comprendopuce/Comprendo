@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { Search, Plus, Calendar, Clock, BookOpen, ChevronRight, Award, ArrowRight } from "lucide-react"
+import { Search, Plus, Calendar, Clock, BookOpen, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Award, ArrowRight } from "lucide-react"
 import { AuthLayout } from "@/components/auth-layout"
 import { CourseSidebar } from "@/components/course-sidebar"
 import { CourseFlowHeader } from "@/components/course-flow-header"
@@ -75,9 +75,14 @@ export function LeccionesPage({
 }: LeccionesPageProps) {
   const router = useRouter()
 
-  // ── Filter / sort state ──────────────────────────────────────────────────
+  // ── Filter / sort / pagination state ──────────────────────────────────────
   const [sortAsc, setSortAsc] = useState(true)
   const [search, setSearch] = useState("")
+  const [currentPage, setCurrentPage] = useState(1)
+
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [search])
 
   // ── API state ────────────────────────────────────────────────────────────
   const [lecciones, setLecciones] = useState<Leccion[]>([])
@@ -130,6 +135,16 @@ export function LeccionesPage({
 
     return result
   }, [lecciones, sortAsc, search])
+
+  const ITEMS_PER_PAGE = 9
+  const totalItems = filtered.length
+  const totalPages = Math.max(1, Math.ceil(totalItems / ITEMS_PER_PAGE))
+  const activePage = Math.min(currentPage, totalPages)
+
+  const paginatedLessons = useMemo(() => {
+    const startIndex = (activePage - 1) * ITEMS_PER_PAGE
+    return filtered.slice(startIndex, startIndex + ITEMS_PER_PAGE)
+  }, [filtered, activePage])
 
   // Sequential number map based on ascending database ID order
   const sequentialNumbers = useMemo(() => {
@@ -202,7 +217,7 @@ export function LeccionesPage({
                 onClick={() => setSortAsc((v) => !v)}
                 className="bg-[#faf6df] text-[#9E5A78] border border-[#F1D87C]/60 rounded-2xl px-4 py-2.5 text-xs font-bold hover:bg-[#F1D87C]/15 transition-all duration-300 cursor-pointer"
               >
-                {sortAsc ? "ID: Ascendente ▲" : "ID: Descendente ▼"}
+                {sortAsc ? "Ascendente ▲" : "Descendente ▼"}
               </button>
 
               {/* 3. Search by tema */}
@@ -246,9 +261,9 @@ export function LeccionesPage({
           ) : (
             /* ── Lesson cards grid ── */
             <div className="space-y-6">
-              {filtered.length > 0 ? (
+              {paginatedLessons.length > 0 ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {filtered.map((lesson) => (
+                  {paginatedLessons.map((lesson) => (
                     <button
                       key={lesson.id}
                       onClick={() =>
@@ -301,6 +316,60 @@ export function LeccionesPage({
                 <div className="text-center py-20 bg-white/40 rounded-3xl border border-dashed border-gray-200">
                   <p className="text-[#C66B86] font-bold text-lg">No se encontraron lecciones</p>
                   <p className="text-xs text-[#C66B86]/70 mt-1">Genera tu primera lección interactiva haciendo clic en &quot;Nueva Lección&quot;.</p>
+                </div>
+              )}
+
+              {/* Pagination Controls */}
+              {totalPages > 1 && (
+                <div className="flex items-center justify-center gap-3 mt-8 bg-white/60 backdrop-blur-md border border-gray-100/50 rounded-2xl p-3 max-w-sm mx-auto shadow-sm">
+                  {/* First Page */}
+                  <button
+                    type="button"
+                    onClick={() => setCurrentPage(1)}
+                    disabled={activePage === 1}
+                    className="p-2.5 rounded-xl border border-gray-100 bg-white text-gray-500 hover:text-[#5B9B95] hover:border-[#5B9B95]/30 transition-all duration-300 disabled:opacity-40 disabled:hover:text-gray-500 disabled:hover:border-gray-100 disabled:cursor-not-allowed cursor-pointer shadow-sm hover:shadow-md active:scale-95 disabled:active:scale-100"
+                    aria-label="Primera página"
+                  >
+                    <ChevronsLeft size={16} />
+                  </button>
+
+                  {/* Previous Page */}
+                  <button
+                    type="button"
+                    onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+                    disabled={activePage === 1}
+                    className="p-2.5 rounded-xl border border-gray-100 bg-white text-gray-500 hover:text-[#5B9B95] hover:border-[#5B9B95]/30 transition-all duration-300 disabled:opacity-40 disabled:hover:text-gray-500 disabled:hover:border-gray-100 disabled:cursor-not-allowed cursor-pointer shadow-sm hover:shadow-md active:scale-95 disabled:active:scale-100"
+                    aria-label="Página anterior"
+                  >
+                    <ChevronLeft size={16} />
+                  </button>
+
+                  {/* Page Indicator */}
+                  <span className="text-xs font-bold text-gray-600 px-3 py-1.5 bg-gray-50 border border-gray-100/50 rounded-xl select-none">
+                    Página {activePage} de {totalPages}
+                  </span>
+
+                  {/* Next Page */}
+                  <button
+                    type="button"
+                    onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+                    disabled={activePage === totalPages}
+                    className="p-2.5 rounded-xl border border-gray-100 bg-white text-gray-500 hover:text-[#5B9B95] hover:border-[#5B9B95]/30 transition-all duration-300 disabled:opacity-40 disabled:hover:text-gray-500 disabled:hover:border-gray-100 disabled:cursor-not-allowed cursor-pointer shadow-sm hover:shadow-md active:scale-95 disabled:active:scale-100"
+                    aria-label="Siguiente página"
+                  >
+                    <ChevronRight size={16} />
+                  </button>
+
+                  {/* Last Page */}
+                  <button
+                    type="button"
+                    onClick={() => setCurrentPage(totalPages)}
+                    disabled={activePage === totalPages}
+                    className="p-2.5 rounded-xl border border-gray-100 bg-white text-gray-500 hover:text-[#5B9B95] hover:border-[#5B9B95]/30 transition-all duration-300 disabled:opacity-40 disabled:hover:text-gray-500 disabled:hover:border-gray-100 disabled:cursor-not-allowed cursor-pointer shadow-sm hover:shadow-md active:scale-95 disabled:active:scale-100"
+                    aria-label="Última página"
+                  >
+                    <ChevronsRight size={16} />
+                  </button>
                 </div>
               )}
 

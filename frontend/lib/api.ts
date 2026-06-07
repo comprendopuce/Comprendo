@@ -175,6 +175,30 @@ export async function getLecciones(idDocenteCursoMateria?: string | number): Pro
   }))
 }
 
+export async function getLeccion(id: string | number): Promise<Leccion> {
+  const res = await request<any>(`/api/lecciones/${id}`)
+  return {
+    ...res,
+    id: res.id ?? res.idLeccion,
+    idDocenteCursoMateria: res.idDocenteCursoMateria ?? res.IdDocenteCursoMateria,
+  }
+}
+
+export async function changeLeccionEstado(
+  leccionId: string | number,
+  estado: string
+): Promise<Leccion> {
+  const res = await request<any>(`/api/lecciones/${leccionId}/estado`, {
+    method: "PATCH",
+    body: JSON.stringify({ estado }),
+  })
+  return {
+    ...res,
+    id: res.id ?? res.idLeccion,
+    idDocenteCursoMateria: res.idDocenteCursoMateria ?? res.IdDocenteCursoMateria,
+  }
+}
+
 export async function createLeccion(data: CreateLeccionRequest): Promise<Leccion> {
   const res = await request<any>("/api/lecciones", {
     method: "POST",
@@ -256,6 +280,72 @@ export async function createPregunta(
 
   const res = await request<any>(`/api/lecciones/${leccionId}/preguntas`, {
     method: "POST",
+    body: JSON.stringify(payload),
+  })
+
+  const rawOpciones: any[] = res.opciones ?? res.Opciones ?? data.opciones ?? []
+  const opciones = rawOpciones.map((o: any) => ({
+    literal: o.literal ?? o.Literal ?? "?",
+    texto: o.texto ?? o.Texto ?? "",
+  }))
+
+  let literalCorrecto = res.literalCorrecto ?? res.respuestaCorrecta ?? res.RespuestaCorrecta ?? data.literalCorrecto ?? ""
+  if (!literalCorrecto) {
+    const correctOpt = rawOpciones.find((o: any) => o.esCorrecta === true || o.EsCorrecta === true)
+    if (correctOpt) {
+      literalCorrecto = correctOpt.literal ?? correctOpt.Literal ?? ""
+    }
+  }
+
+  return {
+    ...res,
+    id: res.id ?? res.idPregunta,
+    opciones,
+    literalCorrecto,
+  }
+}
+
+export async function updatePregunta(
+  leccionId: string | number,
+  preguntaId: string | number,
+  data: CreatePreguntaRequest,
+  orden?: number
+): Promise<Pregunta> {
+  const payload = {
+    enunciado: data.enunciado,
+    Enunciado: data.enunciado,
+    tipoPregunta: "OpcionMultiple",
+    TipoPregunta: "OpcionMultiple",
+    respuestaCorrecta: data.literalCorrecto,
+    RespuestaCorrecta: data.literalCorrecto,
+    explicacion: "",
+    Explicacion: "",
+    puntaje: 1.0,
+    Puntaje: 1.0,
+    orden: orden ?? 1,
+    Orden: orden ?? 1,
+    estado: "Activa",
+    Estado: "Activa",
+    opciones: data.opciones.map((o) => ({
+      literal: o.literal,
+      Literal: o.literal,
+      texto: o.texto,
+      Texto: o.texto,
+      esCorrecta: o.literal === data.literalCorrecto,
+      EsCorrecta: o.literal === data.literalCorrecto,
+    })),
+    Opciones: data.opciones.map((o) => ({
+      literal: o.literal,
+      Literal: o.literal,
+      texto: o.texto,
+      Texto: o.texto,
+      esCorrecta: o.literal === data.literalCorrecto,
+      EsCorrecta: o.literal === data.literalCorrecto,
+    })),
+  }
+
+  const res = await request<any>(`/api/lecciones/${leccionId}/preguntas/${preguntaId}`, {
+    method: "PUT",
     body: JSON.stringify(payload),
   })
 

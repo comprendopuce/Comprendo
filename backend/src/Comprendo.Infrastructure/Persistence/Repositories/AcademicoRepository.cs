@@ -102,6 +102,9 @@ public class AcademicoRepository(ComprendoDbContext dbContext) : IAcademicoRepos
         return Task.CompletedTask;
     }
 
+    public Task<Materia?> GetMateriaByNameAsync(string name, CancellationToken cancellationToken = default) =>
+        dbContext.Materias.FirstOrDefaultAsync(x => x.Nombre.ToLower() == name.ToLower(), cancellationToken);
+
     private static async Task<PaginatedList<T>> PaginateAsync<T>(
         IQueryable<T> query,
         int pageNumber,

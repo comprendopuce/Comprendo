@@ -102,6 +102,7 @@ export interface GenerateQuestionsRequest {
 }
 
 export interface GeneratedQuestion {
+  id?: number | string
   enunciado: string
   opciones: Opcion[]
   literalCorrecto: string

@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import { ArrowUp, Pencil, Check, X } from "lucide-react"
 import { AuthLayout } from "@/components/auth-layout"
 import { CourseSidebar } from "@/components/course-sidebar"
-import { generateQuestion, createLeccion, createPregunta, getEstudiantes, startEvaluationForStudent } from "@/lib/api"
+import { generateQuestion, createLeccion, createPregunta, getEstudiantes, startEvaluationForStudent, getLeccion, getPreguntas, updatePregunta, changeLeccionEstado } from "@/lib/api"
 import type { GeneratedQuestion, Opcion, Estudiante } from "@/lib/types"
 import {
   Breadcrumb,
@@ -22,6 +22,7 @@ interface NuevaLeccionPageProps {
   gradeName?: string
   section?: string
   subject?: string
+  lessonId?: string | number
 }
 
 type Message = {
@@ -63,6 +64,7 @@ export function NuevaLeccionPage({
   gradeName = "Segundo",
   section = "D",
   subject = "Física",
+  lessonId,
 }: NuevaLeccionPageProps) {
   const router = useRouter()
 
@@ -81,13 +83,80 @@ export function NuevaLeccionPage({
   const [totalQuestions, setTotalQuestions] = useState(0)
   const [generatedQuestions, setGeneratedQuestions] = useState<GeneratedQuestion[]>([])
   const [publishing, setPublishing] = useState(false)
+  const [saving, setSaving] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+  useEffect(() => {
+    const textarea = textareaRef.current
+    if (textarea) {
+      textarea.style.height = "auto"
+      textarea.style.height = `${textarea.scrollHeight}px`
+    }
+  }, [input])
+
+  const [toastError, setToastError] = useState<string | null>(null)
+  const toastTimerRef = useRef<NodeJS.Timeout | null>(null)
+
+  const triggerToast = (msg: string) => {
+    setToastError(msg)
+    if (toastTimerRef.current) {
+      clearTimeout(toastTimerRef.current)
+    }
+    toastTimerRef.current = setTimeout(() => {
+      setToastError(null)
+    }, 5000)
+  }
 
   const [mounted, setMounted] = useState(false)
 
   useEffect(() => {
     setMounted(true)
+    return () => {
+      if (toastTimerRef.current) {
+        clearTimeout(toastTimerRef.current)
+      }
+    }
   }, [])
+
+  useEffect(() => {
+    if (!lessonId) return
+    let cancelled = false
+    async function loadDraftLesson() {
+      try {
+        const [lessonData, questionsData] = await Promise.all([
+          getLeccion(lessonId!),
+          getPreguntas(lessonId!),
+        ])
+        if (!cancelled) {
+          setTopic(lessonData.tema)
+          setTotalQuestions(questionsData.length)
+          const mappedQuestions: GeneratedQuestion[] = questionsData.map((q) => ({
+            id: q.id,
+            enunciado: q.enunciado,
+            opciones: q.opciones as Opcion[],
+            literalCorrecto: q.literalCorrecto,
+          }))
+          setGeneratedQuestions(mappedQuestions)
+          setPhase("done")
+          setMessages([
+            initialMessage,
+            {
+              id: 1,
+              role: "assistant",
+              content: `✨ He cargado la lección "${lessonData.tema}" con sus ${questionsData.length} preguntas guardadas.\n\nPuedes editarlas a continuación. Cuando termines, presiona **Publicar Lección** para enviarlas por Telegram o **Guardar Lección** para guardar los cambios sin enviar.`,
+            },
+          ])
+        }
+      } catch (err) {
+        console.error("Error al cargar lección borrador:", err)
+        triggerToast("No se pudo cargar la lección borrador.")
+      }
+    }
+    loadDraftLesson()
+    return () => { cancelled = true }
+  }, [lessonId])
+
 
   // ─── States for editing generated questions ───────────────────────────────────
   const [editingIndex, setEditingIndex] = useState<number | null>(null)
@@ -195,40 +264,155 @@ export function NuevaLeccionPage({
     }
   }
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const val = e.target.value
+    if (val.length > 300) {
+      setInput(val.slice(0, 300))
+      triggerToast("El texto ingresado supera el límite permitido de 300 caracteres para la generación de la lección. Por favor, intente resumir su idea.")
+    } else {
+      setInput(val)
+    }
+  }
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault()
       sendMessage()
     }
   }
 
+  const handleSaveLesson = async () => {
+    if (generatedQuestions.length === 0 || saving || publishing) return
+    setSaving(true)
+
+    try {
+      let activeLessonId = lessonId
+
+      if (!activeLessonId) {
+        // 1. Create the leccion in backend
+        const leccion = await createLeccion({
+          tema: topic,
+          titulo: topic,
+          creadaConIa: true,
+          idDocenteCursoMateria: gradeId,
+        })
+        activeLessonId = leccion.id
+
+        // 2. Create each pregunta in backend
+        let idx = 1
+        for (const q of generatedQuestions) {
+          await createPregunta(
+            leccion.id,
+            {
+              enunciado: q.enunciado,
+              opciones: q.opciones,
+              literalCorrecto: q.literalCorrecto,
+            },
+            idx++
+          )
+        }
+      } else {
+        // Update each question in backend
+        let idx = 1
+        for (const q of generatedQuestions) {
+          if (q.id) {
+            await updatePregunta(
+              activeLessonId,
+              q.id,
+              {
+                enunciado: q.enunciado,
+                opciones: q.opciones,
+                literalCorrecto: q.literalCorrecto,
+              },
+              idx++
+            )
+          } else {
+            await createPregunta(
+              activeLessonId,
+              {
+                enunciado: q.enunciado,
+                opciones: q.opciones,
+                literalCorrecto: q.literalCorrecto,
+              },
+              idx++
+            )
+          }
+        }
+      }
+
+      // 3. Redirect to the leccion details page
+      router.push(`/curso/${gradeId}/${encodeURIComponent(subject)}/lecciones/${activeLessonId}`)
+    } catch (err) {
+      triggerToast(`Error al guardar la lección: ${err instanceof Error ? err.message : "Error desconocido"}`)
+    } finally {
+      setSaving(false)
+    }
+  }
+
   const handlePublish = async () => {
-    if (generatedQuestions.length === 0 || publishing) return
+    if (generatedQuestions.length === 0 || publishing || saving) return
     setPublishing(true)
 
     try {
-      // 1. Create the leccion in backend
-      const leccion = await createLeccion({
-        tema: topic,
-        titulo: topic,
-        creadaConIa: true,
-        idDocenteCursoMateria: gradeId,
-      })
+      let activeLessonId = lessonId
+      let creadas = []
 
-      // 2. Create each pregunta in backend and collect the created items (with their database IDs)
-      const creadas = []
-      let idx = 1
-      for (const q of generatedQuestions) {
-        const dbPregunta = await createPregunta(
-          leccion.id,
-          {
-            enunciado: q.enunciado,
-            opciones: q.opciones,
-            literalCorrecto: q.literalCorrecto,
-          },
-          idx++
-        )
-        creadas.push(dbPregunta)
+      if (!activeLessonId) {
+        // 1. Create the leccion in backend
+        const leccion = await createLeccion({
+          tema: topic,
+          titulo: topic,
+          creadaConIa: true,
+          idDocenteCursoMateria: gradeId,
+        })
+        activeLessonId = leccion.id
+
+        // 2. Create each pregunta in backend and collect the created items (with their database IDs)
+        let idx = 1
+        for (const q of generatedQuestions) {
+          const dbPregunta = await createPregunta(
+            leccion.id,
+            {
+              enunciado: q.enunciado,
+              opciones: q.opciones,
+              literalCorrecto: q.literalCorrecto,
+            },
+            idx++
+          )
+          creadas.push(dbPregunta)
+        }
+      } else {
+        // 1. Update questions and collect their updated representations
+        let idx = 1
+        for (const q of generatedQuestions) {
+          if (q.id) {
+            const dbPregunta = await updatePregunta(
+              activeLessonId,
+              q.id,
+              {
+                enunciado: q.enunciado,
+                opciones: q.opciones,
+                literalCorrecto: q.literalCorrecto,
+              },
+              idx++
+            )
+            creadas.push(dbPregunta)
+          } else {
+            const dbPregunta = await createPregunta(
+              activeLessonId,
+              {
+                enunciado: q.enunciado,
+                opciones: q.opciones,
+                literalCorrecto: q.literalCorrecto,
+              },
+              idx++
+            )
+            creadas.push(dbPregunta)
+          }
+        }
+
+        // 2. Change the state to ENVIADA in .NET backend
+        await changeLeccionEstado(activeLessonId, "ENVIADA")
       }
 
       // 3. Fetch enrolled students to notify them
@@ -253,7 +437,7 @@ export function NuevaLeccionPage({
         // Notify each student via the integration bot
         const sendPromises = estudiantesTelegram.map((e) =>
           startEvaluationForStudent({
-            idLeccion: leccion.id,
+            idLeccion: activeLessonId!,
             idEstudiante: e.id,
             topic: topic,
             studentChatId: e.telegramChatId!,
@@ -267,7 +451,7 @@ export function NuevaLeccionPage({
       }
 
       // 5. Navigate to the lesson detail screen
-      router.push(`/curso/${gradeId}/${encodeURIComponent(subject)}/lecciones/${leccion.id}`)
+      router.push(`/curso/${gradeId}/${encodeURIComponent(subject)}/lecciones/${activeLessonId}`)
     } catch (err) {
       addAssistantMessage(
         `❌ Error al publicar la lección: ${err instanceof Error ? err.message : "Error desconocido"}. Intenta de nuevo.`
@@ -276,10 +460,30 @@ export function NuevaLeccionPage({
     }
   }
 
-  const isInputDisabled = isTyping || phase === "generating" || phase === "done" || publishing
+  const isInputDisabled = isTyping || phase === "generating" || phase === "done" || publishing || saving
 
   return (
     <AuthLayout>
+      {toastError && (
+        <div className="fixed top-20 right-6 z-50 flex items-center justify-between gap-3 bg-white/95 backdrop-blur-md border-l-4 border-[#d4776a] text-gray-800 px-4 py-3.5 rounded-2xl shadow-2xl animate-toast-slide-in max-w-sm border border-gray-100/50">
+          <div className="flex items-center gap-2.5">
+            <div className="flex items-center justify-center w-6 h-6 rounded-full bg-[#d4776a]/10 text-[#d4776a]">
+              <span className="text-xs font-bold font-sans">!</span>
+            </div>
+            <p className="text-xs font-bold text-gray-700 font-sans leading-tight">
+              {toastError}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setToastError(null)}
+            className="text-gray-400 hover:text-gray-600 transition-colors ml-2 font-bold cursor-pointer text-xs p-1 hover:bg-gray-100 rounded-lg"
+            aria-label="Cerrar notificación"
+          >
+            ✕
+          </button>
+        </div>
+      )}
       <div className="flex flex-1">
         {/* ── Sidebar ───────────────────────────────────────────────────── */}
         <CourseSidebar
@@ -330,21 +534,36 @@ export function NuevaLeccionPage({
             </BreadcrumbList>
           </Breadcrumb>
 
-          {/* Heading + Publish button */}
+          {/* Heading + Action buttons */}
           <div className="flex items-center justify-between mb-4">
             <h1 className="text-4xl font-bold italic text-[#9E5A78]">
               Nueva Lección
             </h1>
-            <button
-              onClick={handlePublish}
-              disabled={!mounted || phase !== "done" || publishing}
-              className="bg-[#5B9B95] text-white font-semibold rounded-xl px-5 py-2 hover:bg-[#4a8880] transition-colors shadow-sm disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2"
-            >
-              {publishing && (
-                <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
-              )}
-              {publishing ? "Publicando..." : "Publicar Lección"}
-            </button>
+            <div className="flex items-center gap-3">
+              {/* Save Button */}
+              <button
+                onClick={handleSaveLesson}
+                disabled={!mounted || generatedQuestions.length === 0 || saving || publishing}
+                className="bg-[#7297C9] text-white font-semibold rounded-xl px-5 py-2 hover:bg-[#5E83B5] transition-colors shadow-sm disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2"
+              >
+                {saving && (
+                  <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                )}
+                {saving ? "Guardando..." : "Guardar Lección"}
+              </button>
+
+              {/* Publish Button */}
+              <button
+                onClick={handlePublish}
+                disabled={!mounted || phase !== "done" || publishing || saving}
+                className="bg-[#5B9B95] text-white font-semibold rounded-xl px-5 py-2 hover:bg-[#4a8880] transition-colors shadow-sm disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2"
+              >
+                {publishing && (
+                  <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                )}
+                {publishing ? "Publicando..." : "Publicar Lección"}
+              </button>
+            </div>
           </div>
 
           {/* ── Layout Contenedor: Chat + Panel de Preguntas (si existen) ── */}
@@ -405,13 +624,13 @@ export function NuevaLeccionPage({
 
                 {/* Input row */}
                 <div
-                  className="flex items-center gap-3 px-4 py-3 border-t border-[#F1D87C]/30"
+                  className="flex items-end gap-3 px-4 py-3 border-t border-[#F1D87C]/30"
                   style={{ backgroundColor: "#faf6df" }}
                 >
-                  <input
-                    type="text"
+                  <textarea
+                    ref={textareaRef}
                     value={input}
-                    onChange={(e) => setInput(e.target.value)}
+                    onChange={handleInputChange}
                     onKeyDown={handleKeyDown}
                     placeholder={
                       phase === "generating"
@@ -419,12 +638,17 @@ export function NuevaLeccionPage({
                         : "Escribe aquí..."
                     }
                     disabled={isInputDisabled}
-                    className="flex-1 bg-transparent text-sm text-[#9E5A78] placeholder:text-[#C66B86]/50 focus:outline-none disabled:opacity-50"
+                    rows={1}
+                    className="flex-1 bg-transparent text-sm text-[#9E5A78] placeholder:text-[#C66B86]/50 focus:outline-none disabled:opacity-50 resize-none py-1.5 leading-relaxed max-h-32 overflow-y-auto"
                   />
+                  {/* Dynamic character counter */}
+                  <span className={`text-xs font-semibold pb-2 select-none transition-colors ${input.length >= 300 ? "text-[#d4776a] font-bold" : "text-[#C66B86]/60"}`}>
+                    {input.length}/300
+                  </span>
                   <button
                     onClick={sendMessage}
                     disabled={!input.trim() || isInputDisabled}
-                    className="w-9 h-9 rounded-full flex items-center justify-center text-white transition-all disabled:opacity-40"
+                    className="w-9 h-9 rounded-full flex items-center justify-center text-white transition-all disabled:opacity-40 flex-shrink-0 mb-0.5"
                     style={{ backgroundColor: "#5B9B95" }}
                     aria-label="Enviar mensaje"
                   >

@@ -30,4 +30,5 @@ public interface IAcademicoRepository
     Task<Materia?> GetMateriaByIdAsync(int id, CancellationToken cancellationToken = default);
     Task<Materia> CreateMateriaAsync(Materia entity, CancellationToken cancellationToken = default);
     Task UpdateMateriaAsync(Materia entity, CancellationToken cancellationToken = default);
+    Task<Materia?> GetMateriaByNameAsync(string name, CancellationToken cancellationToken = default);
 }

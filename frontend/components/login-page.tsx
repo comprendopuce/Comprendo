@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useRef, useEffect } from "react"
 import { Eye, EyeOff, ArrowLeft, ShieldCheck } from "lucide-react"
 import { PublicLayout } from "@/components/public-layout"
 import { useAuth } from "@/hooks/useAuth"
@@ -14,20 +14,76 @@ export function LoginPage() {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [emailError, setEmailError] = useState<string | null>(null)
+  const [toastError, setToastError] = useState<string | null>(null)
+  const toastTimerRef = useRef<NodeJS.Timeout | null>(null)
+
+  const triggerToast = (msg: string) => {
+    setToastError(msg)
+    if (toastTimerRef.current) {
+      clearTimeout(toastTimerRef.current)
+    }
+    toastTimerRef.current = setTimeout(() => {
+      setToastError(null)
+    }, 5000)
+  }
+
+  useEffect(() => {
+    return () => {
+      if (toastTimerRef.current) {
+        clearTimeout(toastTimerRef.current)
+      }
+    }
+  }, [])
+
+  const validateEmail = (val: string) => {
+    if (!val.trim()) {
+      setEmailError("El correo electrónico es obligatorio")
+      return false
+    }
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[a-zA-Z]{2,}$/
+    if (!emailRegex.test(val)) {
+      setEmailError("El correo electrónico no es válido (ej. usuario@dominio.com)")
+      return false
+    }
+    setEmailError(null)
+    return true
+  }
   
+  const cleanErrorMessage = (msg: string): string => {
+    if (!msg) return "Ocurrió un error inesperado."
+    if (msg.includes("<!DOCTYPE") || msg.includes("<html") || /<[a-z][\s\S]*>/i.test(msg)) {
+      return "Ocurrió un error en el servidor. Por favor, intenta de nuevo más tarde."
+    }
+    const errorPrefixRegex = /^Error \d+:\s*/i
+    if (errorPrefixRegex.test(msg)) {
+      const cleaned = msg.replace(errorPrefixRegex, "")
+      if (cleaned.toLowerCase().includes("internal server error") || cleaned.toLowerCase().includes("bad gateway") || cleaned.toLowerCase().includes("gateway timeout")) {
+        return "Ocurrió un error en el servidor. Por favor, intenta de nuevo más tarde."
+      }
+      return cleaned
+    }
+    return msg
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    setError(null)
+
+    const isEmailValid = validateEmail(email)
+    if (!isEmailValid) {
+      triggerToast("Por favor, corrige los errores antes de continuar.")
+      return
+    }
+
     setLoading(true)
     try {
       await login(email, password)
       // navigation handled inside useAuth
     } catch (err) {
       if (err instanceof ApiError) {
-        setError(err.message)
+        triggerToast(cleanErrorMessage(err.message))
       } else {
-        setError("Ocurrió un error al iniciar sesión. Intenta de nuevo.")
+        triggerToast("Ocurrió un error al iniciar sesión. Intenta de nuevo.")
       }
     } finally {
       setLoading(false)
@@ -36,6 +92,26 @@ export function LoginPage() {
 
   return (
     <PublicLayout accentBars={false}>
+      {toastError && (
+        <div className="fixed top-20 right-6 z-50 flex items-center justify-between gap-3 bg-white/95 backdrop-blur-md border-l-4 border-[#d4776a] text-gray-800 px-4 py-3.5 rounded-2xl shadow-2xl animate-toast-slide-in max-w-sm border border-gray-100/50">
+          <div className="flex items-center gap-2.5">
+            <div className="flex items-center justify-center w-6 h-6 rounded-full bg-[#d4776a]/10 text-[#d4776a]">
+              <span className="text-xs font-bold font-sans">!</span>
+            </div>
+            <p className="text-xs font-bold text-gray-700 font-sans">
+              {toastError}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setToastError(null)}
+            className="text-gray-400 hover:text-gray-600 transition-colors ml-2 font-bold cursor-pointer text-xs p-1 hover:bg-gray-100 rounded-lg"
+            aria-label="Cerrar notificación"
+          >
+            ✕
+          </button>
+        </div>
+      )}
       {/* Main content - split screen with high-end aesthetic */}
       <main className="flex-1 flex min-h-[calc(100vh-3.5rem)] bg-gradient-to-br from-[#faf6df] to-[#fdfdf1]">
         
@@ -83,7 +159,7 @@ export function LoginPage() {
               </p>
             </div>
 
-            <form onSubmit={handleSubmit} className="space-y-6">
+            <form onSubmit={handleSubmit} noValidate className="space-y-6">
               
               {/* Email field */}
               <div className="space-y-1.5">
@@ -97,12 +173,21 @@ export function LoginPage() {
                   id="email"
                   type="email"
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  onChange={(e) => {
+                    setEmail(e.target.value)
+                    if (emailError) validateEmail(e.target.value)
+                  }}
+                  onBlur={(e) => validateEmail(e.target.value)}
                   placeholder="ejemplo@gmail.com"
                   required
                   disabled={loading}
                   className="bg-white/80 border border-[#F1D87C]/60 focus:border-[#5B9B95] rounded-2xl px-4 py-3 w-full text-sm text-gray-700 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#5B9B95]/20 transition-all duration-300 disabled:opacity-60"
                 />
+                {emailError && (
+                  <p className="text-xs text-[#d4776a] font-semibold pl-1 mt-1 animate-shake">
+                    {emailError}
+                  </p>
+                )}
               </div>
 
               {/* Password field */}
@@ -134,13 +219,6 @@ export function LoginPage() {
                   </button>
                 </div>
               </div>
-
-              {/* Error message */}
-              {error && (
-                <div className="p-3 bg-[#d4776a]/15 border border-[#d4776a]/20 text-[#d4776a] text-xs rounded-xl text-center font-semibold animate-shake">
-                  {error}
-                </div>
-              )}
 
               {/* Submit button */}
               <button

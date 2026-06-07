@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo, useEffect } from "react"
+import { useState, useMemo, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { Search, X, Edit2, ChevronDown, ChevronUp, Plus, Award, ArrowRight, Calendar, Sparkles } from "lucide-react"
 import { AuthLayout } from "@/components/auth-layout"
@@ -16,6 +16,7 @@ import {
   getMaterias,
   createMateria,
   createAsignacion,
+  ApiError,
 } from "@/lib/api"
 import type {
   Asignacion,
@@ -26,41 +27,58 @@ import type {
   Materia,
 } from "@/lib/types"
 
+const defaultNivelNames = [
+  "Octavo de Básica",
+  "Noveno de Básica",
+  "Decimo de Básica",
+  "Primero de Bachillerato",
+  "Segundo de Bachillerato",
+  "Tercero de Bachillerato"
+]
+
+const defaultMateriaNames = [
+  "Matemática",
+  "Inglés",
+  "Historia",
+  "Lengua y Literatura"
+]
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-/** Convert a nivel string like "Octavo" → { number: number, ordinal: string, name: string } */
-function parseNivel(nivel: string): { number: number; ordinal: string; name: string } {
+/** Convert a nivel string like "Octavo" → { number: number, ordinal: string, name: string, sortOrder: number } */
+function parseNivel(nivel: string): { number: number; ordinal: string; name: string; sortOrder: number } {
   const normalized = nivel.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim()
+  const isBach = normalized.includes("bachillerato") || normalized.includes("bgu")
   
   if (normalized.includes("primero") || normalized.includes("primer")) {
-    return { number: 1, ordinal: "ro", name: nivel }
+    return { number: 1, ordinal: "ro", name: nivel, sortOrder: isBach ? 11 : 1 }
   }
   if (normalized.includes("segundo")) {
-    return { number: 2, ordinal: "do", name: nivel }
+    return { number: 2, ordinal: "do", name: nivel, sortOrder: isBach ? 12 : 2 }
   }
   if (normalized.includes("tercero") || normalized.includes("tercer")) {
-    return { number: 3, ordinal: "ro", name: nivel }
+    return { number: 3, ordinal: "ro", name: nivel, sortOrder: isBach ? 13 : 3 }
   }
   if (normalized.includes("cuarto")) {
-    return { number: 4, ordinal: "to", name: nivel }
+    return { number: 4, ordinal: "to", name: nivel, sortOrder: 4 }
   }
   if (normalized.includes("quinto")) {
-    return { number: 5, ordinal: "to", name: nivel }
+    return { number: 5, ordinal: "to", name: nivel, sortOrder: 5 }
   }
   if (normalized.includes("sexto")) {
-    return { number: 6, ordinal: "to", name: nivel }
+    return { number: 6, ordinal: "to", name: nivel, sortOrder: 6 }
   }
   if (normalized.includes("septimo")) {
-    return { number: 7, ordinal: "mo", name: nivel }
+    return { number: 7, ordinal: "mo", name: nivel, sortOrder: 7 }
   }
   if (normalized.includes("octavo")) {
-    return { number: 8, ordinal: "vo", name: nivel }
+    return { number: 8, ordinal: "vo", name: nivel, sortOrder: 8 }
   }
   if (normalized.includes("noveno")) {
-    return { number: 9, ordinal: "no", name: nivel }
+    return { number: 9, ordinal: "no", name: nivel, sortOrder: 9 }
   }
   if (normalized.includes("decimo")) {
-    return { number: 10, ordinal: "mo", name: nivel }
+    return { number: 10, ordinal: "mo", name: nivel, sortOrder: 10 }
   }
   
   // Check direct numbers (e.g. 1ro, 2do, 3ro, 1er, 1, 2, 3)
@@ -70,10 +88,11 @@ function parseNivel(nivel: string): { number: number; ordinal: string; name: str
     const ordinals: Record<number, string> = {
       1: "ro", 2: "do", 3: "ro", 4: "to", 5: "to", 6: "to", 7: "mo", 8: "vo", 9: "no", 10: "mo"
     }
-    return { number: num, ordinal: ordinals[num] ?? "no", name: nivel }
+    const sort = isBach && num <= 3 ? num + 10 : num
+    return { number: num, ordinal: ordinals[num] ?? "no", name: nivel, sortOrder: sort }
   }
   
-  return { number: 0, ordinal: "", name: nivel }
+  return { number: 0, ordinal: "", name: nivel, sortOrder: 0 }
 }
 
 // ─── Skeleton card ────────────────────────────────────────────────────────────
@@ -108,7 +127,77 @@ export function GradesPanelPage() {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
   const [catalogsLoading, setCatalogsLoading] = useState(false)
   const [submitting, setSubmitting] = useState(false)
-  const [modalError, setModalError] = useState<string | null>(null)
+  const [toastError, setToastError] = useState<string | null>(null)
+  const toastTimerRef = useRef<NodeJS.Timeout | null>(null)
+
+  const triggerToast = (msg: string) => {
+    setToastError(msg)
+    if (toastTimerRef.current) {
+      clearTimeout(toastTimerRef.current)
+    }
+    toastTimerRef.current = setTimeout(() => {
+      setToastError(null)
+    }, 5000)
+  }
+
+  useEffect(() => {
+    return () => {
+      if (toastTimerRef.current) {
+        clearTimeout(toastTimerRef.current)
+      }
+    }
+  }, [])
+
+  const cleanErrorMessage = (err: unknown): string => {
+    if (!(err instanceof ApiError)) {
+      if (err instanceof Error) {
+        const msgLower = err.message.toLowerCase();
+        if (msgLower.includes("fetch") || msgLower.includes("network") || msgLower.includes("connect") || msgLower.includes("failed")) {
+          return "Ocurrió un problema de conexión con el servidor.";
+        }
+        return err.message;
+      }
+      return "Ocurrió un error inesperado al intentar crear el grado/curso.";
+    }
+
+    if (err.status === 409) {
+      return "Ya existe una asignación registrada para este curso con la materia seleccionada."
+    }
+
+    const msg = err.message
+    if (!msg) return "Ocurrió un error inesperado."
+    
+    if (msg.includes("<!DOCTYPE") || msg.includes("<html") || /<[a-z][\s\S]*>/i.test(msg)) {
+      return "Ocurrió un error en el servidor. Por favor, intenta de nuevo más tarde."
+    }
+
+    const errorPrefixRegex = /^Error \d+:\s*/i
+    if (errorPrefixRegex.test(msg)) {
+      const cleaned = msg.replace(errorPrefixRegex, "")
+      const lowerCleaned = cleaned.toLowerCase()
+      if (lowerCleaned.includes("internal server error") || 
+          lowerCleaned.includes("bad gateway") || 
+          lowerCleaned.includes("gateway timeout")) {
+        return "Ocurrió un error en el servidor. Por favor, intenta de nuevo más tarde."
+      }
+      return cleaned
+    }
+
+    if (err.status === 400) {
+      return `Datos no válidos: ${msg}`
+    }
+    if (err.status === 401 || err.status === 403) {
+      return "No tienes autorización para realizar esta acción."
+    }
+    if (err.status === 404) {
+      return "El recurso no fue encontrado en el servidor."
+    }
+    if (err.status && err.status >= 500) {
+      return "Ocurrió un error en el servidor. Por favor, intenta de nuevo más tarde."
+    }
+
+    return msg
+  }
 
   // Catalogs
   const [aniosLectivos, setAniosLectivos] = useState<AnioLectivo[]>([])
@@ -127,10 +216,57 @@ export function GradesPanelPage() {
   const [customMateriaName, setCustomMateriaName] = useState("")
   const [customMateriaDesc, setCustomMateriaDesc] = useState("")
 
+  // Unified levels list (defaults + other existing from DB)
+  const mappedNiveles = useMemo(() => {
+    const result: { value: string; nombre: string }[] = defaultNivelNames.map(name => {
+      const existing = niveles.find(l => l.nombre.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "") === name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, ""))
+      return {
+        value: existing ? existing.idNivel.toString() : `DEFAULT_${name}`,
+        nombre: name
+      }
+    })
+
+    // Add any DB levels not in the default list
+    niveles.forEach(l => {
+      const isDefault = defaultNivelNames.some(name => name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "") === l.nombre.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, ""))
+      if (!isDefault) {
+        result.push({
+          value: l.idNivel.toString(),
+          nombre: l.nombre
+        })
+      }
+    })
+
+    return result
+  }, [niveles])
+
+  // Unified subjects list (defaults + other existing from DB)
+  const mappedMaterias = useMemo(() => {
+    const result: { value: string; nombre: string }[] = defaultMateriaNames.map(name => {
+      const existing = materias.find(m => m.nombre.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "") === name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, ""))
+      return {
+        value: existing ? existing.idMateria.toString() : `DEFAULT_${name}`,
+        nombre: name
+      }
+    })
+
+    // Add any DB subjects not in the default list
+    materias.forEach(m => {
+      const isDefault = defaultMateriaNames.some(name => name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "") === m.nombre.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, ""))
+      if (!isDefault) {
+        result.push({
+          value: m.idMateria.toString(),
+          nombre: m.nombre
+        })
+      }
+    })
+
+    return result
+  }, [materias])
+
   const openCreateModal = async () => {
     setIsCreateModalOpen(true)
     setCatalogsLoading(true)
-    setModalError(null)
     try {
       const [years, levels, sections, subjects, allCourses] = await Promise.all([
         getAniosLectivos(),
@@ -146,14 +282,27 @@ export function GradesPanelPage() {
       setCursos(allCourses)
 
       if (years.length > 0) {
-        const active = years.find((y) => y.estado === "ACTIVO") ?? years[0]
+        const active = years.find((y) => y.nombre === "2025-2026") ?? years.find((y) => y.estado === "ACTIVO") ?? years[0]
         setSelectedAnioId(active.idAnioLectivo.toString())
       }
-      if (levels.length > 0) setSelectedNivelId(levels[0].idNivel.toString())
-      if (sections.length > 0) setSelectedParaleloId(sections[0].idParalelo.toString())
-      if (subjects.length > 0) setSelectedMateriaId(subjects[0].idMateria.toString())
+      
+      if (levels.length > 0) {
+        const firstDefaultNivelName = defaultNivelNames[0]
+        const existingNivel = levels.find(l => l.nombre.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "") === firstDefaultNivelName.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, ""))
+        setSelectedNivelId(existingNivel ? existingNivel.idNivel.toString() : `DEFAULT_${firstDefaultNivelName}`)
+      }
+      
+      if (sections.length > 0) {
+        setSelectedParaleloId(sections[0].idParalelo.toString())
+      }
+      
+      if (subjects.length > 0) {
+        const firstDefaultMateriaName = defaultMateriaNames[0]
+        const existingMateria = subjects.find(m => m.nombre.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "") === firstDefaultMateriaName.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, ""))
+        setSelectedMateriaId(existingMateria ? existingMateria.idMateria.toString() : `DEFAULT_${firstDefaultMateriaName}`)
+      }
     } catch (err) {
-      setModalError(err instanceof Error ? err.message : "Error al cargar los catálogos")
+      triggerToast(cleanErrorMessage(err))
     } finally {
       setCatalogsLoading(false)
     }
@@ -162,36 +311,62 @@ export function GradesPanelPage() {
   const handleCreateAssignment = async (e: React.FormEvent) => {
     e.preventDefault()
     setSubmitting(true)
-    setModalError(null)
     try {
-      let finalNivelId = parseInt(selectedNivelId)
+      let finalNivelId = 0
       let finalParaleloId = parseInt(selectedParaleloId)
-      let finalMateriaId = parseInt(selectedMateriaId)
+      let finalMateriaId = 0
       let finalAnioId = parseInt(selectedAnioId)
 
       if (!finalAnioId) {
         throw new Error("Por favor selecciona un año lectivo.")
       }
 
-      // 1. Create Nivel if custom
+      // 1. Create Nivel if custom or default-needed
       if (selectedNivelId === "NEW") {
         if (!customNivelName.trim()) throw new Error("Por favor ingresa el nombre del nuevo nivel.")
-        const newNivel = await createNivel(customNivelName.trim())
+        const existing = niveles.find(l => l.nombre.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "") === customNivelName.trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, ""))
+        if (existing) {
+          finalNivelId = existing.idNivel
+        } else {
+          const newNivel = await createNivel(customNivelName.trim())
+          finalNivelId = newNivel.idNivel
+        }
+      } else if (selectedNivelId.startsWith("DEFAULT_")) {
+        const name = selectedNivelId.substring("DEFAULT_".length)
+        const newNivel = await createNivel(name)
         finalNivelId = newNivel.idNivel
+      } else {
+        finalNivelId = parseInt(selectedNivelId)
       }
 
       // 2. Create Paralelo if custom
       if (selectedParaleloId === "NEW") {
         if (!customParaleloName.trim()) throw new Error("Por favor ingresa el nombre del nuevo paralelo.")
-        const newParalelo = await createParalelo(customParaleloName.trim())
-        finalParaleloId = newParalelo.idParalelo
+        const existing = paralelos.find(p => p.nombre.toLowerCase().trim() === customParaleloName.trim().toLowerCase())
+        if (existing) {
+          finalParaleloId = existing.idParalelo
+        } else {
+          const newParalelo = await createParalelo(customParaleloName.trim())
+          finalParaleloId = newParalelo.idParalelo
+        }
       }
 
-      // 3. Create Materia if custom
+      // 3. Create Materia if custom or default-needed
       if (selectedMateriaId === "NEW") {
         if (!customMateriaName.trim()) throw new Error("Por favor ingresa el nombre de la nueva materia.")
-        const newMateria = await createMateria(customMateriaName.trim(), customMateriaDesc.trim())
+        const existing = materias.find(m => m.nombre.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "") === customMateriaName.trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, ""))
+        if (existing) {
+          finalMateriaId = existing.idMateria
+        } else {
+          const newMateria = await createMateria(customMateriaName.trim(), customMateriaDesc.trim())
+          finalMateriaId = newMateria.idMateria
+        }
+      } else if (selectedMateriaId.startsWith("DEFAULT_")) {
+        const name = selectedMateriaId.substring("DEFAULT_".length)
+        const newMateria = await createMateria(name, "")
         finalMateriaId = newMateria.idMateria
+      } else {
+        finalMateriaId = parseInt(selectedMateriaId)
       }
 
       // 4. Find or Create Curso
@@ -224,7 +399,7 @@ export function GradesPanelPage() {
       setCustomMateriaName("")
       setCustomMateriaDesc("")
     } catch (err) {
-      setModalError(err instanceof Error ? err.message : "Error al guardar el nuevo grado/curso")
+      triggerToast(cleanErrorMessage(err))
     } finally {
       setSubmitting(false)
     }
@@ -271,7 +446,7 @@ export function GradesPanelPage() {
       result = result.filter((g) => g.nivel.toLowerCase().includes(q))
     }
     result.sort((a, b) =>
-      sortAsc ? a.parsed.number - b.parsed.number : b.parsed.number - a.parsed.number
+      sortAsc ? a.parsed.sortOrder - b.parsed.sortOrder : b.parsed.sortOrder - a.parsed.sortOrder
     )
     return result
   }, [gradeCards, sortAsc, search])
@@ -299,6 +474,26 @@ export function GradesPanelPage() {
 
   return (
     <AuthLayout>
+      {toastError && (
+        <div className="fixed top-20 right-6 z-[100] flex items-center justify-between gap-3 bg-white/95 backdrop-blur-md border-l-4 border-[#d4776a] text-gray-800 px-4 py-3.5 rounded-2xl shadow-2xl animate-toast-slide-in max-w-sm border border-gray-100/50">
+          <div className="flex items-center gap-2.5">
+            <div className="flex items-center justify-center w-6 h-6 rounded-full bg-[#d4776a]/10 text-[#d4776a]">
+              <span className="text-xs font-bold font-sans">!</span>
+            </div>
+            <p className="text-xs font-bold text-gray-700 font-sans">
+              {toastError}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setToastError(null)}
+            className="text-gray-400 hover:text-gray-600 transition-colors ml-2 font-bold cursor-pointer text-xs p-1 hover:bg-gray-100 rounded-lg"
+            aria-label="Cerrar notificación"
+          >
+            ✕
+          </button>
+        </div>
+      )}
       <main className="flex-1 max-w-5xl mx-auto w-full px-6 md:px-8 py-10 min-h-[calc(100vh-3.5rem)]">
         
         {/* Header Row */}
@@ -333,7 +528,7 @@ export function GradesPanelPage() {
               onClick={() => setSortAsc(!sortAsc)}
               className="bg-[#faf6df] text-[#9E5A78] border border-[#F1D87C]/60 rounded-2xl px-4 py-2.5 text-xs font-bold hover:bg-[#F1D87C]/15 transition-all duration-300 cursor-pointer"
             >
-              {sortAsc ? "Menor a Mayor ▲" : "Mayor a Menor ▼"}
+              {sortAsc ? "Ascendente ▲" : "Descendente ▼"}
             </button>
 
             {/* Search Bar */}
@@ -564,49 +759,32 @@ export function GradesPanelPage() {
               </div>
             ) : (
               <form onSubmit={handleCreateAssignment} className="flex-1 overflow-y-auto px-6 py-5 space-y-4 bg-white/30">
-                {modalError && (
-                  <div className="bg-[#fdf0f0] border border-[#f5c6c6] text-[#d4776a] text-xs rounded-2xl px-4 py-3 font-semibold text-center">
-                    {modalError}
-                  </div>
-                )}
-
-                {/* Año Lectivo Selector */}
-                <div className="space-y-1.5">
-                  <label className="block text-[#9E5A78] text-[10px] font-black uppercase tracking-wider pl-1">
-                    Año Lectivo
-                  </label>
-                  <select
-                    value={selectedAnioId}
-                    onChange={(e) => setSelectedAnioId(e.target.value)}
-                    className="w-full bg-white border border-[#F1D87C]/60 focus:border-[#5B9B95] rounded-2xl px-3 py-2.5 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#5B9B95]/10 transition-colors"
-                  >
-                    {aniosLectivos.map((a) => (
-                      <option key={a.idAnioLectivo} value={a.idAnioLectivo}>
-                        {a.nombre} {a.estado === "ACTIVO" ? "(Activo)" : ""}
-                      </option>
-                    ))}
-                  </select>
-                </div>
 
                 {/* Nivel Selector */}
                 <div className="space-y-1.5">
                   <label className="block text-[#9E5A78] text-[10px] font-black uppercase tracking-wider pl-1">
                     Nivel Educativo (Grado)
                   </label>
-                  <select
-                    value={selectedNivelId}
-                    onChange={(e) => setSelectedNivelId(e.target.value)}
-                    className="w-full bg-white border border-[#F1D87C]/60 focus:border-[#5B9B95] rounded-2xl px-3 py-2.5 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#5B9B95]/10 transition-colors"
-                  >
-                    {niveles.map((n) => (
-                      <option key={n.idNivel} value={n.idNivel}>
-                        {n.nombre}
+                  <div className="relative">
+                    <select
+                      value={selectedNivelId}
+                      onChange={(e) => setSelectedNivelId(e.target.value)}
+                      className="w-full bg-white border border-[#F1D87C]/60 focus:border-[#5B9B95] rounded-2xl px-3 py-2.5 pr-10 text-sm text-gray-700 appearance-none focus:outline-none focus:ring-2 focus:ring-[#5B9B95]/10 transition-colors cursor-pointer"
+                    >
+                      {mappedNiveles.map((n) => (
+                        <option key={n.value} value={n.value}>
+                          {n.nombre}
+                        </option>
+                      ))}
+                      <option value="NEW" className="text-[#5B9B95] font-black">
+                        + Crear nuevo grado...
                       </option>
-                    ))}
-                    <option value="NEW" className="text-[#5B9B95] font-black">
-                      + Crear nuevo grado...
-                    </option>
-                  </select>
+                    </select>
+                    <ChevronDown
+                      className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[#9E5A78] pointer-events-none"
+                      size={18}
+                    />
+                  </div>
 
                   {selectedNivelId === "NEW" && (
                     <input
@@ -625,20 +803,26 @@ export function GradesPanelPage() {
                   <label className="block text-[#9E5A78] text-[10px] font-black uppercase tracking-wider pl-1">
                     Paralelo (Sección)
                   </label>
-                  <select
-                    value={selectedParaleloId}
-                    onChange={(e) => setSelectedParaleloId(e.target.value)}
-                    className="w-full bg-white border border-[#F1D87C]/60 focus:border-[#5B9B95] rounded-2xl px-3 py-2.5 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#5B9B95]/10 transition-colors"
-                  >
-                    {paralelos.map((p) => (
-                      <option key={p.idParalelo} value={p.idParalelo}>
-                        Paralelo {p.nombre}
+                  <div className="relative">
+                    <select
+                      value={selectedParaleloId}
+                      onChange={(e) => setSelectedParaleloId(e.target.value)}
+                      className="w-full bg-white border border-[#F1D87C]/60 focus:border-[#5B9B95] rounded-2xl px-3 py-2.5 pr-10 text-sm text-gray-700 appearance-none focus:outline-none focus:ring-2 focus:ring-[#5B9B95]/10 transition-colors cursor-pointer"
+                    >
+                      {paralelos.map((p) => (
+                        <option key={p.idParalelo} value={p.idParalelo}>
+                          Paralelo {p.nombre}
+                        </option>
+                      ))}
+                      <option value="NEW" className="text-[#5B9B95] font-black">
+                        + Crear nuevo paralelo...
                       </option>
-                    ))}
-                    <option value="NEW" className="text-[#5B9B95] font-black">
-                      + Crear nuevo paralelo...
-                    </option>
-                  </select>
+                    </select>
+                    <ChevronDown
+                      className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[#9E5A78] pointer-events-none"
+                      size={18}
+                    />
+                  </div>
 
                   {selectedParaleloId === "NEW" && (
                     <input
@@ -657,20 +841,26 @@ export function GradesPanelPage() {
                   <label className="block text-[#9E5A78] text-[10px] font-black uppercase tracking-wider pl-1">
                     Materia (Asignatura)
                   </label>
-                  <select
-                    value={selectedMateriaId}
-                    onChange={(e) => setSelectedMateriaId(e.target.value)}
-                    className="w-full bg-white border border-[#F1D87C]/60 focus:border-[#5B9B95] rounded-2xl px-3 py-2.5 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#5B9B95]/10 transition-colors"
-                  >
-                    {materias.map((m) => (
-                      <option key={m.idMateria} value={m.idMateria}>
-                        {m.nombre}
+                  <div className="relative">
+                    <select
+                      value={selectedMateriaId}
+                      onChange={(e) => setSelectedMateriaId(e.target.value)}
+                      className="w-full bg-white border border-[#F1D87C]/60 focus:border-[#5B9B95] rounded-2xl px-3 py-2.5 pr-10 text-sm text-gray-700 appearance-none focus:outline-none focus:ring-2 focus:ring-[#5B9B95]/10 transition-colors cursor-pointer"
+                    >
+                      {mappedMaterias.map((m) => (
+                        <option key={m.value} value={m.value}>
+                          {m.nombre}
+                        </option>
+                      ))}
+                      <option value="NEW" className="text-[#5B9B95] font-black">
+                        + Crear nueva materia...
                       </option>
-                    ))}
-                    <option value="NEW" className="text-[#5B9B95] font-black">
-                      + Crear nueva materia...
-                    </option>
-                  </select>
+                    </select>
+                    <ChevronDown
+                      className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[#9E5A78] pointer-events-none"
+                      size={18}
+                    />
+                  </div>
 
                   {selectedMateriaId === "NEW" && (
                     <div className="space-y-2 mt-2 animate-in slide-in-from-top-2">

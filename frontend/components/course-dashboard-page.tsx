@@ -126,7 +126,7 @@ export function CourseDashboardPage({
   const [lessonsCount, setLessonsCount] = useState(0)
   const [totalAnsweredQuestions, setTotalAnsweredQuestions] = useState(0)
   
-  const [comprensionData, setComprensionData] = useState<Array<{ tema: string; s1: number; s2: number; s3: number }>>([])
+  const [comprensionData, setComprensionData] = useState<Array<{ id: string | number; tema: string; s1: number; s2: number; s3: number }>>([])
   const [conteoRespuestasData, setConteoRespuestasData] = useState<Array<{ tipo: string; value: number }>>([])
   const [pieData, setPieData] = useState<Array<{ name: string; value: number; fill: string }>>([])
 
@@ -201,6 +201,7 @@ export function CourseDashboardPage({
           })
 
           return {
+            id: lesson.id,
             tema: lesson.tema,
             s1: bajo,
             s2: medio,
@@ -378,13 +379,24 @@ export function CourseDashboardPage({
                         <h2 className="font-black text-lg tracking-tight">Nivel de Comprensión Por Tema</h2>
                       </div>
                       <p className="text-[10px] text-[#C66B86] font-semibold uppercase tracking-wider">
-                        Cantidad de estudiantes por nivel de acierto en cada tema
+                        Cantidad de estudiantes por nivel de acierto &mdash; <span className="normal-case font-bold text-[#5B9B95]">haz clic en una barra para ver el detalle de esa lección</span>
                       </p>
                     </div>
                   </div>
 
                   <ResponsiveContainer width="100%" height={240}>
-                    <BarChart data={comprensionData} barGap={4} barCategoryGap="25%">
+                    <BarChart
+                      data={comprensionData}
+                      barGap={4}
+                      barCategoryGap="25%"
+                      style={{ cursor: "pointer" }}
+                      onClick={(data) => {
+                        const id = data?.activePayload?.[0]?.payload?.id
+                        if (id !== undefined) {
+                          router.push(`/curso/${gradeId}/${encodeURIComponent(subject)}/lecciones/${id}`)
+                        }
+                      }}
+                    >
                       <XAxis
                         dataKey="tema"
                         tick={{ fontSize: 10, fill: "#9E5A78", fontWeight: "bold" }}

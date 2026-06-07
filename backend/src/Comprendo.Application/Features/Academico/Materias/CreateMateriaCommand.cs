@@ -1,4 +1,4 @@
-﻿using Comprendo.Application.Abstractions.Persistence;
+using Comprendo.Application.Abstractions.Persistence;
 using Comprendo.Application.Common.Interfaces;
 using Comprendo.Application.Common.Mappings;
 using Comprendo.Domain.Entities;
@@ -32,6 +32,12 @@ public class CreateMateriaCommandHandler : IRequestHandler<CreateMateriaCommand,
 
     public async Task<MateriaDto> Handle(CreateMateriaCommand request, CancellationToken cancellationToken)
     {
+        var existing = await _repository.GetMateriaByNameAsync(request.Nombre, cancellationToken);
+        if (existing != null)
+        {
+            return existing.ToDto();
+        }
+
         var entity = new Materia { Nombre = request.Nombre, Descripcion = request.Descripcion, Estado = Enum.Parse<EstadoMateria>(request.Estado, true) };
         var created = await _repository.CreateMateriaAsync(entity, cancellationToken);
         await _unitOfWork.SaveChangesAsync(cancellationToken);
