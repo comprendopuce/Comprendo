@@ -532,6 +532,7 @@ export async function startEvaluationForStudent(data: {
   idEstudiante: number | string
   topic: string
   studentChatId: string
+  totalEstudiantes?: number
   preguntas: Array<{
     idPregunta: number | string
     orden?: number
