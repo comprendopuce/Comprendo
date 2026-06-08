@@ -83,12 +83,7 @@ export function LoginPage() {
       await login(email, password)
       // navigation handled inside useAuth
     } catch (err: any) {
-      const msg = err?.message ?? ""
-      if (msg) {
-        setCredentialsError(cleanErrorMessage(msg))
-      } else {
-        setCredentialsError("Su correo electrónico o contraseña son incorrectos. Por favor, verifique sus credenciales e intente de nuevo.")
-      }
+      setCredentialsError("Usuario o contraseña no válidos")
     } finally {
       setLoading(false)
     }
