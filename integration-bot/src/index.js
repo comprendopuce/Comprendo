@@ -38,8 +38,8 @@ const activeChats = new Map();
 // Key: chatId, Value: { idLeccion, idEstudiante, topic, preguntas[], currentIndex }
 const evaluationQueues = new Map();
 
-// Estado de las lecciones (Para agrupar respuestas y manejar el timeout)
-// Key: idLeccion (number), Value: { timer, totalEstudiantes, finishedCount, results: Map<chatId, { correctCount, messages }> }
+// Estado de las lecciones (agrupa respuestas hasta que todos los estudiantes terminen)
+// Key: idLeccion (number), Value: { totalEstudiantes, finishedCount, results: Map<chatId, { correctCount, messages }> }
 const activeLessons = new Map();
 
 async function closeLessonAndSendFeedback(lessonId) {
@@ -58,7 +58,7 @@ async function closeLessonAndSendFeedback(lessonId) {
             console.error(`Failed to send final results to ${studentChatId}`, e.message);
         }
         
-        // Limpiar colas residuales por si se cerró por tiempo y no terminaron
+        // Limpiar colas residuales si el estudiante no terminó todas las preguntas
         evaluationQueues.delete(studentChatId);
         activeChats.delete(studentChatId);
     }
@@ -450,12 +450,6 @@ if (TELEGRAM_BOT_TOKEN && TELEGRAM_BOT_TOKEN !== "tu_telegram_bot_token_aqui") {
         } else {
           const errData = await response.text();
           console.error("Error al registrar la respuesta en Core API:", errData);
-          if (response.status === 400 && errData.toLowerCase().includes("tiempo")) {
-            await bot.sendMessage(chatId, "⏱️ El tiempo límite de 5 minutos ha finalizado. La evaluación se ha cerrado y no se aceptó tu respuesta.");
-            activeChats.delete(chatId);
-            evaluationQueues.delete(chatId);
-            return;
-          }
         }
       } catch (error) {
         console.error("Error de conexión al registrar respuesta en Core API:", error.message);
@@ -501,7 +495,6 @@ if (TELEGRAM_BOT_TOKEN && TELEGRAM_BOT_TOKEN !== "tu_telegram_bot_token_aqui") {
             // Si todos terminaron, cerrar y enviar
             if (lessonState.finishedCount >= lessonState.totalEstudiantes) {
                 console.log(`Todos los estudiantes de la lección ${currentLessonId} han terminado.`);
-                clearTimeout(lessonState.timer);
                 await closeLessonAndSendFeedback(currentLessonId);
             } else {
                 await bot.sendMessage(chatId, "Has respondido todas tus preguntas. Esperando a que el resto de tus compañeros termine para mostrarte los resultados...");
@@ -675,12 +668,7 @@ app.post("/start-evaluation", async (req, res) => {
 
     // Inicializar estado de lección si es la primera petición de esta lección
     if (!activeLessons.has(idLeccionNum)) {
-      const timer = setTimeout(() => {
-        closeLessonAndSendFeedback(idLeccionNum);
-      }, 5 * 60 * 1000); // 5 minutos exactos
-
       activeLessons.set(idLeccionNum, {
-        timer,
         totalEstudiantes: totalEstudiantes,
         finishedCount: 0,
         results: new Map()
