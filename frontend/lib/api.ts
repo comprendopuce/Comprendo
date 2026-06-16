@@ -82,7 +82,9 @@ async function request<T>(
   return JSON.parse(text) as T
 }
 
-const BOT_URL = process.env.NEXT_PUBLIC_BOT_API_URL ?? "http://localhost:3000"
+const BOT_URL =
+  process.env.NEXT_PUBLIC_BOT_API_URL ??
+  (process.env.NEXT_PUBLIC_API_URL ? "http://localhost:3001" : "/bot")
 
 async function requestBot<T>(
   path: string,
@@ -515,6 +517,10 @@ export async function generarCodigo(idDocenteCursoMateria: string | number): Pro
 }
 
 // ─── Bot / Telegram ───────────────────────────────────────────────────────────
+
+export async function activateBot(): Promise<BotInfoResponse> {
+  return requestBot<BotInfoResponse>("/api/bot/activate", { method: "POST" })
+}
 
 export async function getBotInfo(): Promise<BotInfoResponse> {
   return requestBot<BotInfoResponse>("/api/bot-info")

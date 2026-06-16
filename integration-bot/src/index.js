@@ -177,25 +177,12 @@ function chatHasActiveSession(chatId) {
   return activeChats.has(String(chatId)) || evaluationQueues.has(String(chatId));
 }
 
-// Inicializar Telegram Bot
 let bot = null;
 let botUsername = "Comprendobotv1_bot";
-const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+let botInitPromise = null;
 
-if (TELEGRAM_BOT_TOKEN && TELEGRAM_BOT_TOKEN !== "tu_telegram_bot_token_aqui") {
-  try {
-    bot = new TelegramBot(TELEGRAM_BOT_TOKEN, { polling: true });
-    console.log("Telegram Bot: inicializado correctamente (polling activo).");
-
-    bot.getMe().then((me) => {
-      botUsername = me.username;
-      console.log(`Telegram Bot username cached: @${botUsername}`);
-    }).catch((err) => {
-      console.error("Error al obtener información del bot:", err.message);
-    });
-
-    // Escuchar mensajes de los estudiantes
-    bot.on("message", async (msg) => {
+function registerBotMessageHandlers() {
+  bot.on("message", async (msg) => {
       const chatId = String(msg.chat.id);
       
       // Manejar comando /start con código opcional
@@ -501,13 +488,57 @@ if (TELEGRAM_BOT_TOKEN && TELEGRAM_BOT_TOKEN !== "tu_telegram_bot_token_aqui") {
             }
         }
       }
-    });
-  } catch (error) {
-    console.error("Error al inicializar el bot de Telegram:", error.message);
-  }
-} else {
-  console.warn("TELEGRAM_BOT_TOKEN no configurado o es el valor por defecto. El bot no responderá en Telegram.");
+  });
 }
+
+async function activateTelegramBot() {
+  if (bot) {
+    return { ok: true, username: botUsername, telegramBotInitialized: true };
+  }
+
+  const token = process.env.TELEGRAM_BOT_TOKEN;
+  if (!token || token === "tu_telegram_bot_token_aqui") {
+    console.warn("TELEGRAM_BOT_TOKEN no configurado. El bot no responderá en Telegram.");
+    return { ok: false, username: botUsername, telegramBotInitialized: false };
+  }
+
+  if (!botInitPromise) {
+    botInitPromise = (async () => {
+      try {
+        bot = new TelegramBot(token, { polling: true });
+        registerBotMessageHandlers();
+        const me = await bot.getMe();
+        botUsername = me.username;
+        console.log(`Telegram Bot: activado (polling) @${botUsername}`);
+        return { ok: true, username: botUsername, telegramBotInitialized: true };
+      } catch (error) {
+        bot = null;
+        botInitPromise = null;
+        console.error("Error al activar el bot de Telegram:", error.message);
+        throw error;
+      }
+    })();
+  }
+
+  return botInitPromise;
+}
+
+console.log("Telegram Bot: en espera. Se activa al abrir la página de inicio del panel.");
+
+// Activar polling de Telegram (invocado por la página de inicio)
+app.post("/api/bot/activate", async (req, res) => {
+  try {
+    const result = await activateTelegramBot();
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({
+      ok: false,
+      username: botUsername,
+      telegramBotInitialized: false,
+      error: error.message
+    });
+  }
+});
 
 // Endpoint de salud
 app.get("/health", (req, res) => {
@@ -519,12 +550,22 @@ app.get("/health", (req, res) => {
 });
 
 // Endpoint para obtener información del bot de Telegram
-app.get("/api/bot-info", (req, res) => {
-  res.json({
-    ok: true,
-    username: botUsername,
-    telegramBotInitialized: bot !== null
-  });
+app.get("/api/bot-info", async (req, res) => {
+  try {
+    const result = await activateTelegramBot();
+    res.json({
+      ok: result.ok,
+      username: result.username,
+      telegramBotInitialized: result.telegramBotInitialized
+    });
+  } catch (error) {
+    res.status(500).json({
+      ok: false,
+      username: botUsername,
+      telegramBotInitialized: false,
+      error: error.message
+    });
+  }
 });
 
 // Endpoint para generar preguntas con IA (invocado por el Frontend)
@@ -637,6 +678,8 @@ app.post("/start-class", async (req, res) => {
 // Endpoint para iniciar evaluación secuencial (todas las preguntas de la lección, una por una)
 app.post("/start-evaluation", async (req, res) => {
   try {
+    await activateTelegramBot();
+
     const { idLeccion, idEstudiante, topic, preguntas } = req.body;
     const studentChatId = req.body.studentChatId || process.env.TELEGRAM_STUDENT_CHAT_ID;
 

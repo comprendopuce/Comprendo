@@ -1,11 +1,19 @@
 "use client"
 
+import { useEffect } from "react"
 import { PublicLayout } from "./public-layout"
 import { BarChart3, Target, Zap, TrendingUp, Sparkles, BookOpen, Heart, ArrowRight } from "lucide-react"
 import { useRouter } from "next/navigation"
+import { activateBot } from "@/lib/api"
 
 export function HomePage() {
   const router = useRouter()
+
+  useEffect(() => {
+    activateBot().catch(() => {
+      // El bot puede no estar configurado en entornos sin TELEGRAM_BOT_TOKEN
+    })
+  }, [])
 
   return (
     <PublicLayout accentBars={false}>
