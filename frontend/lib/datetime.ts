@@ -42,6 +42,21 @@ export function fromDateAndTimeLocal(
   return fromDatetimeLocal(combined)
 }
 
+/** Parsea "HH:MM" en hora y minuto para selects. */
+export function splitTimeValue(time?: string | null): { hour: string; minute: string } {
+  if (!time || !time.includes(":")) return { hour: "", minute: "" }
+  const [hour, minute] = time.split(":")
+  return { hour: hour ?? "", minute: minute ?? "" }
+}
+
+/** Combina hora y minuto en formato "HH:MM". */
+export function combineTimeValue(hour: string, minute: string): string {
+  if (!hour && !minute) return ""
+  const h = hour.padStart(2, "0")
+  const m = (minute || "00").padStart(2, "0")
+  return `${h}:${m}`
+}
+
 export function formatFechaDisponibilidad(iso?: string | null): string | null {
   if (!iso) return null
   const d = new Date(iso)
