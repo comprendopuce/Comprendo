@@ -6,7 +6,8 @@ import { ArrowUp, Pencil, Check, X } from "lucide-react"
 import { AuthLayout } from "@/components/auth-layout"
 import { CourseSidebar } from "@/components/course-sidebar"
 import { generateQuestion, createLeccion, createPregunta, getEstudiantes, startEvaluationForStudent, getLeccion, getPreguntas, updatePregunta, changeLeccionEstado, updateLeccion } from "@/lib/api"
-import { fromDatetimeLocal, toDatetimeLocal } from "@/lib/datetime"
+import { fromDateAndTimeLocal, splitDatetimeLocal } from "@/lib/datetime"
+import { FechaHoraInput } from "@/components/fecha-hora-input"
 import type { GeneratedQuestion, Opcion, Estudiante } from "@/lib/types"
 import {
   Breadcrumb,
@@ -82,8 +83,10 @@ export function NuevaLeccionPage({
   const [phase, setPhase] = useState<ChatPhase>("ask_input")
   const [topic, setTopic] = useState("")
   const [lessonTitle, setLessonTitle] = useState("")
-  const [fechaDesdeInput, setFechaDesdeInput] = useState("")
-  const [fechaHastaInput, setFechaHastaInput] = useState("")
+  const [fechaDesdeDate, setFechaDesdeDate] = useState("")
+  const [fechaDesdeTime, setFechaDesdeTime] = useState("")
+  const [fechaHastaDate, setFechaHastaDate] = useState("")
+  const [fechaHastaTime, setFechaHastaTime] = useState("")
   const [totalQuestions, setTotalQuestions] = useState(0)
   const [generatedQuestions, setGeneratedQuestions] = useState<GeneratedQuestion[]>([])
   const [publishing, setPublishing] = useState(false)
@@ -135,8 +138,12 @@ export function NuevaLeccionPage({
         if (!cancelled) {
           setTopic(lessonData.tema)
           setLessonTitle(lessonData.titulo || lessonData.tema)
-          setFechaDesdeInput(toDatetimeLocal(lessonData.fechaDisponibleDesde))
-          setFechaHastaInput(toDatetimeLocal(lessonData.fechaDisponibleHasta))
+          const desde = splitDatetimeLocal(lessonData.fechaDisponibleDesde)
+          const hasta = splitDatetimeLocal(lessonData.fechaDisponibleHasta)
+          setFechaDesdeDate(desde.date)
+          setFechaDesdeTime(desde.time)
+          setFechaHastaDate(hasta.date)
+          setFechaHastaTime(hasta.time)
           setTotalQuestions(questionsData.length)
           const mappedQuestions: GeneratedQuestion[] = questionsData.map((q) => ({
             id: q.id,
@@ -290,8 +297,8 @@ export function NuevaLeccionPage({
   }
 
   const parseFechasDisponibilidad = () => ({
-    fechaDisponibleDesde: fromDatetimeLocal(fechaDesdeInput),
-    fechaDisponibleHasta: fromDatetimeLocal(fechaHastaInput),
+    fechaDisponibleDesde: fromDateAndTimeLocal(fechaDesdeDate, fechaDesdeTime, "00:00"),
+    fechaDisponibleHasta: fromDateAndTimeLocal(fechaHastaDate, fechaHastaTime, "23:59"),
   })
 
   const buildLeccionPayload = () => ({
@@ -610,24 +617,24 @@ export function NuevaLeccionPage({
                 <label className="block text-xs font-bold text-[#9E5A78] uppercase tracking-wide mb-1.5">
                   Disponible desde
                 </label>
-                <input
-                  type="datetime-local"
-                  value={fechaDesdeInput}
-                  onChange={(e) => setFechaDesdeInput(e.target.value)}
-                  className="w-full rounded-xl border border-[#F1D87C]/50 px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#5B9B95]/40"
+                <FechaHoraInput
+                  dateValue={fechaDesdeDate}
+                  timeValue={fechaDesdeTime}
+                  onDateChange={setFechaDesdeDate}
+                  onTimeChange={setFechaDesdeTime}
                 />
               </div>
               <div>
                 <label className="block text-xs font-bold text-[#9E5A78] uppercase tracking-wide mb-1.5">
                   Disponible hasta
                 </label>
-                <input
-                  type="datetime-local"
-                  value={fechaHastaInput}
-                  onChange={(e) => setFechaHastaInput(e.target.value)}
-                  className="w-full rounded-xl border border-[#F1D87C]/50 px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#5B9B95]/40"
+                <FechaHoraInput
+                  dateValue={fechaHastaDate}
+                  timeValue={fechaHastaTime}
+                  onDateChange={setFechaHastaDate}
+                  onTimeChange={setFechaHastaTime}
                 />
-                <p className="text-[10px] text-[#C66B86] mt-1">Deja vacío si no quieres restringir por fechas.</p>
+                <p className="text-[10px] text-[#C66B86] mt-1">Deja vacío si no quieres restringir por fechas y horas.</p>
               </div>
             </div>
           )}

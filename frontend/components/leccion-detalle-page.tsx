@@ -9,7 +9,8 @@ import { Search, X, Check, ChevronLeft, ChevronRight, Eye, AlignJustify } from "
 import { AuthLayout } from "@/components/auth-layout"
 import { CourseSidebar } from "@/components/course-sidebar"
 import { getResultados, getPreguntas, getLecciones, getLeccion, updateLeccion } from "@/lib/api"
-import { formatFechaDisponibilidad, fromDatetimeLocal, toDatetimeLocal } from "@/lib/datetime"
+import { formatFechaDisponibilidad, fromDateAndTimeLocal, splitDatetimeLocal } from "@/lib/datetime"
+import { FechaHoraInput } from "@/components/fecha-hora-input"
 import type { Resultado, Pregunta, Opcion, Leccion } from "@/lib/types"
 import { NuevaLeccionPage } from "@/components/nueva-leccion-page"
 import { useRouter } from "next/navigation"
@@ -1182,8 +1183,10 @@ export function LeccionDetallePage({
   const [leccion, setLeccion] = useState<Leccion | null>(null)
   const [loadingLeccion, setLoadingLeccion] = useState(true)
   const [editTitle, setEditTitle] = useState("")
-  const [editFechaDesde, setEditFechaDesde] = useState("")
-  const [editFechaHasta, setEditFechaHasta] = useState("")
+  const [editFechaDesdeDate, setEditFechaDesdeDate] = useState("")
+  const [editFechaDesdeTime, setEditFechaDesdeTime] = useState("")
+  const [editFechaHastaDate, setEditFechaHastaDate] = useState("")
+  const [editFechaHastaTime, setEditFechaHastaTime] = useState("")
   const [savingMeta, setSavingMeta] = useState(false)
 
   useEffect(() => {
@@ -1214,8 +1217,12 @@ export function LeccionDetallePage({
         if (!cancelled) {
           setLeccion(data)
           setEditTitle(data.titulo || data.tema || "")
-          setEditFechaDesde(toDatetimeLocal(data.fechaDisponibleDesde))
-          setEditFechaHasta(toDatetimeLocal(data.fechaDisponibleHasta))
+          const desde = splitDatetimeLocal(data.fechaDisponibleDesde)
+          const hasta = splitDatetimeLocal(data.fechaDisponibleHasta)
+          setEditFechaDesdeDate(desde.date)
+          setEditFechaDesdeTime(desde.time)
+          setEditFechaHastaDate(hasta.date)
+          setEditFechaHastaTime(hasta.time)
         }
       } catch (err) {
         console.error("Error loading lesson detail:", err)
@@ -1271,8 +1278,8 @@ export function LeccionDetallePage({
       const updated = await updateLeccion(leccion.id, {
         titulo: editTitle.trim() || displayTitle,
         tema: leccion.tema,
-        fechaDisponibleDesde: fromDatetimeLocal(editFechaDesde),
-        fechaDisponibleHasta: fromDatetimeLocal(editFechaHasta),
+        fechaDisponibleDesde: fromDateAndTimeLocal(editFechaDesdeDate, editFechaDesdeTime, "00:00"),
+        fechaDisponibleHasta: fromDateAndTimeLocal(editFechaHastaDate, editFechaHastaTime, "23:59"),
       })
       setLeccion(updated)
     } catch (err) {
@@ -1357,20 +1364,22 @@ export function LeccionDetallePage({
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-[#9E5A78] uppercase mb-1">Disponible desde</label>
-                  <input
-                    type="datetime-local"
-                    value={editFechaDesde}
-                    onChange={(e) => setEditFechaDesde(e.target.value)}
-                    className="w-full rounded-xl border border-[#F1D87C]/50 px-3 py-2 text-sm"
+                  <FechaHoraInput
+                    dateValue={editFechaDesdeDate}
+                    timeValue={editFechaDesdeTime}
+                    onDateChange={setEditFechaDesdeDate}
+                    onTimeChange={setEditFechaDesdeTime}
+                    inputClassName="w-full rounded-xl border border-[#F1D87C]/50 px-3 py-2 text-sm"
                   />
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-[#9E5A78] uppercase mb-1">Disponible hasta</label>
-                  <input
-                    type="datetime-local"
-                    value={editFechaHasta}
-                    onChange={(e) => setEditFechaHasta(e.target.value)}
-                    className="w-full rounded-xl border border-[#F1D87C]/50 px-3 py-2 text-sm"
+                  <FechaHoraInput
+                    dateValue={editFechaHastaDate}
+                    timeValue={editFechaHastaTime}
+                    onDateChange={setEditFechaHastaDate}
+                    onTimeChange={setEditFechaHastaTime}
+                    inputClassName="w-full rounded-xl border border-[#F1D87C]/50 px-3 py-2 text-sm"
                   />
                 </div>
                 <div className="md:col-span-3 flex justify-end">
