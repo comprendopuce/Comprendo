@@ -139,7 +139,7 @@ export function EstudiantesPage({
           code = await generarCodigo(gradeId)
         }
         setEnrollCode(code)
-        setEnrollLink(`https://t.me/${botUsername}`)
+        setEnrollLink(`https://t.me/${botUsername}?start=inscripcion`)
       } catch {
         // El profesor puede reintentar con el botón
       }
@@ -163,7 +163,7 @@ export function EstudiantesPage({
         code = await generarCodigo(gradeId)
       }
       setEnrollCode(code)
-      setEnrollLink(`https://t.me/${botUsername}`)
+      setEnrollLink(`https://t.me/${botUsername}?start=inscripcion`)
     } catch (err) {
       setGenError(err instanceof Error ? err.message : "No se pudo obtener el código")
     } finally {
@@ -366,10 +366,9 @@ export function EstudiantesPage({
                   <div>
                     <strong>📱 ¿Cómo se inscriben tus estudiantes?</strong>
                     <ul className="list-disc pl-4 mt-1 space-y-1 text-[#5272a0]/90">
-                      <li>Abren el enlace del bot o buscan <strong>@{botUsername}</strong> en Telegram</li>
-                      <li>Escriben <code>/start</code> y el bot los guía paso a paso</li>
-                      <li>Comparten su número, escriben su <strong>nombre y apellido</strong> (no los de la cuenta de Telegram)</li>
-                      <li>Ingresan el código <strong>{enrollCode}</strong> de este curso</li>
+                      <li>Abren el enlace del bot (envía <code>/start</code> automáticamente) o buscan <strong>@{botUsername}</strong></li>
+                      <li>Si es su primera vez: comparten teléfono, escriben <strong>nombre y apellido</strong>, luego el código</li>
+                      <li>Si ya están registrados: el bot les pedirá directamente el código <strong>{enrollCode}</strong></li>
                     </ul>
                   </div>
                 </div>
