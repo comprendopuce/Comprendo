@@ -5,9 +5,11 @@ import { PublicLayout } from "./public-layout"
 import { BarChart3, Target, Zap, TrendingUp, Sparkles, BookOpen, Heart, ArrowRight } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { wakeServices } from "@/lib/api"
+import { useAuth } from "@/hooks/useAuth"
 
 export function HomePage() {
   const router = useRouter()
+  const { isLoggedIn } = useAuth()
 
   useEffect(() => {
     wakeServices().catch(() => {
@@ -40,18 +42,29 @@ export function HomePage() {
             </p>
             
             <div className="flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-4 pt-4">
-              <button 
-                onClick={() => router.push("/registro")}
-                className="w-full sm:w-auto bg-[#9E5A78] hover:bg-[#864b64] text-white font-bold px-8 py-3.5 rounded-2xl shadow-lg shadow-[#9E5A78]/25 hover:shadow-xl hover:shadow-[#9E5A78]/35 transition-all duration-300 transform hover:-translate-y-0.5 flex items-center justify-center gap-2 group cursor-pointer"
-              >
-                Comenzar gratis <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform" />
-              </button>
-              <button 
-                onClick={() => router.push("/login")}
-                className="w-full sm:w-auto bg-white/80 hover:bg-white text-[#5B9B95] border border-[#5B9B95]/30 hover:border-[#5B9B95] font-semibold px-8 py-3.5 rounded-2xl shadow-sm hover:shadow-md transition-all duration-300 cursor-pointer"
-              >
-                Iniciar sesión
-              </button>
+              {isLoggedIn ? (
+                <button
+                  onClick={() => router.push("/grados")}
+                  className="w-full sm:w-auto bg-[#7297C9] hover:bg-[#5f82b3] text-white font-bold px-8 py-3.5 rounded-2xl shadow-lg shadow-[#7297C9]/25 hover:shadow-xl transition-all duration-300 transform hover:-translate-y-0.5 flex items-center justify-center gap-2 group cursor-pointer"
+                >
+                  Ir a mi panel docente <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform" />
+                </button>
+              ) : (
+                <>
+                  <button
+                    onClick={() => router.push("/registro")}
+                    className="w-full sm:w-auto bg-[#9E5A78] hover:bg-[#864b64] text-white font-bold px-8 py-3.5 rounded-2xl shadow-lg shadow-[#9E5A78]/25 hover:shadow-xl hover:shadow-[#9E5A78]/35 transition-all duration-300 transform hover:-translate-y-0.5 flex items-center justify-center gap-2 group cursor-pointer"
+                  >
+                    Comenzar gratis <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform" />
+                  </button>
+                  <button
+                    onClick={() => router.push("/login")}
+                    className="w-full sm:w-auto bg-white/80 hover:bg-white text-[#5B9B95] border border-[#5B9B95]/30 hover:border-[#5B9B95] font-semibold px-8 py-3.5 rounded-2xl shadow-sm hover:shadow-md transition-all duration-300 cursor-pointer"
+                  >
+                    Iniciar sesión
+                  </button>
+                </>
+              )}
             </div>
           </div>
 

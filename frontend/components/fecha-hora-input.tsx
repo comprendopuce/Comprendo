@@ -3,12 +3,10 @@
 import { es } from "date-fns/locale"
 import { CalendarDays, Clock3 } from "lucide-react"
 import { useMemo } from "react"
-import TimePicker from "react-time-picker"
-
 import * as Popover from "@radix-ui/react-popover"
 
 import { Calendar } from "@/components/ui/calendar"
-import { combineTimeValue, splitTimeValue } from "@/lib/datetime"
+import { HoraRelojPicker } from "@/components/hora-reloj-picker"
 
 import "./fecha-hora-input.css"
 
@@ -53,8 +51,6 @@ export function FechaHoraInput({
   timePlaceholder = "Hora",
   inputClassName = defaultInputClass,
 }: FechaHoraInputProps) {
-  const { hour, minute } = splitTimeValue(timeValue)
-
   const selectedDate = useMemo(() => {
     if (!dateValue) return undefined
     const [y, m, d] = dateValue.split("-").map((v) => Number(v))
@@ -66,8 +62,6 @@ export function FechaHoraInput({
     () => formatDisplayLabel(dateValue, timeValue),
     [dateValue, timeValue],
   )
-
-  const timePickerValue = hour || minute ? combineTimeValue(hour || "00", minute || "00") : ""
 
   return (
     <Popover.Root>
@@ -90,6 +84,7 @@ export function FechaHoraInput({
         <Popover.Content
           sideOffset={8}
           align="start"
+          onOpenAutoFocus={(e) => e.preventDefault()}
           className="comprendo-datetime-picker z-50 w-[min(94vw,440px)] rounded-2xl border border-[#F1D87C]/50 bg-white p-4 shadow-xl"
         >
           <div className="grid grid-cols-1 gap-4">
@@ -120,17 +115,9 @@ export function FechaHoraInput({
                 <Clock3 className="h-3.5 w-3.5" />
                 {timePlaceholder}
               </p>
-              <TimePicker
-                onChange={(v) => onTimeChange(typeof v === "string" ? v : "")}
-                value={timePickerValue}
-                disableClock={false}
-                clearIcon={null}
-                format="HH:mm"
-                hourPlaceholder="HH"
-                minutePlaceholder="MM"
-              />
+              <HoraRelojPicker timeValue={timeValue} onTimeChange={onTimeChange} />
               <p className="mt-2 text-center text-[11px] text-[#5B5B5B]">
-                Escribe la hora o toca el reloj para seleccionarla
+                Primero elige la hora en el reloj, luego los minutos
               </p>
             </div>
           </div>

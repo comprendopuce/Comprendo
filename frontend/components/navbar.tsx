@@ -15,6 +15,14 @@ export function Navbar({ isLoggedIn = false, onLogin, onLogout }: NavbarProps) {
   const [showDropdown, setShowDropdown] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
 
+  const goHome = () => {
+    router.push("/")
+  }
+
+  const goToTeacherPanel = () => {
+    router.push("/grados")
+  }
+
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
@@ -28,14 +36,26 @@ export function Navbar({ isLoggedIn = false, onLogin, onLogout }: NavbarProps) {
 
   return (
     <nav className="sticky top-0 z-50 h-14 bg-[#f4f0d5] border-b border-[#F1D87C]/30 px-8 flex items-center justify-between">
-      {/* Logo — no navigation */}
-      <span
-        className={`text-2xl font-black tracking-tight select-none ${
-          isLoggedIn ? "text-[#7297C9]" : "text-[#9E5A78]"
-        }`}
-      >
-        Comprendo
-      </span>
+      <div className="flex items-center gap-4 min-w-0">
+        <button
+          type="button"
+          onClick={goHome}
+          className={`text-2xl font-black tracking-tight select-none cursor-pointer hover:opacity-80 transition-opacity ${
+            isLoggedIn ? "text-[#7297C9]" : "text-[#9E5A78]"
+          }`}
+        >
+          Comprendo
+        </button>
+        {isLoggedIn && (
+          <button
+            type="button"
+            onClick={goToTeacherPanel}
+            className="hidden sm:inline-flex rounded-xl border border-[#7297C9]/30 bg-white px-3 py-1.5 text-xs font-bold text-[#7297C9] hover:bg-[#7297C9]/10 transition-colors cursor-pointer"
+          >
+            Panel docente
+          </button>
+        )}
+      </div>
 
       {/* Right side */}
       {!isLoggedIn ? (
