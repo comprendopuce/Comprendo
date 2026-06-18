@@ -417,9 +417,10 @@ function normalizePregunta(pregunta) {
 }
 
 function buildQuestionMessage(topic, activeQ) {
+  const title = String(topic || "").trim() || "Evaluación";
   const questionText = activeQ.question;
   const opts = activeQ.options;
-  return `📢 *Cierre de clase: ${topic || "Evaluación"}*\n\n${questionText}\n\n*A)* ${opts.A}\n*B)* ${opts.B}\n*C)* ${opts.C}\n*D)* ${opts.D}\n\n_Responde enviando solo la letra de la opción correcta (A, B, C o D)._`;
+  return `*${title}*\n\n${questionText}\n\n*A)* ${opts.A}\n*B)* ${opts.B}\n*C)* ${opts.C}\n*D)* ${opts.D}\n\n_Responde enviando solo la letra de la opción correcta (A, B, C o D)._`;
 }
 
 async function sendQuestionToStudent({
