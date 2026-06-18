@@ -6,6 +6,7 @@ using Comprendo.Domain.Entities;
 using Comprendo.Domain.Enums;
 using Comprendo.Domain.Exceptions;
 using FluentValidation;
+using FluentValidation.Results;
 using MediatR;
 
 namespace Comprendo.Application.Features.Lecciones;
@@ -26,10 +27,6 @@ public class CreateLeccionCommandValidator : AbstractValidator<CreateLeccionComm
     {
         RuleFor(x => x.IdDocenteCursoMateria).GreaterThan(0);
         RuleFor(x => x.Titulo).NotEmpty().MaximumLength(150);
-        RuleFor(x => x)
-            .Must(x => !x.FechaDisponibleDesde.HasValue || !x.FechaDisponibleHasta.HasValue ||
-                       x.FechaDisponibleHasta > x.FechaDisponibleDesde)
-            .WithMessage("La fecha de fin debe ser posterior a la fecha de inicio.");
     }
 }
 
@@ -65,6 +62,13 @@ public class CreateLeccionCommandHandler : IRequestHandler<CreateLeccionCommand,
             throw new ForbiddenException("Assignment does not belong to the current docente.");
         }
 
+        var ahora = _dateTime.UtcNow;
+        var falloRango = LeccionDisponibilidad.ValidarRango(ahora, request.FechaDisponibleHasta);
+        if (falloRango is not null)
+        {
+            throw new ValidationException(new[] { falloRango });
+        }
+
         var entity = new Leccion
         {
             IdDocenteCursoMateria = request.IdDocenteCursoMateria,
@@ -72,9 +76,9 @@ public class CreateLeccionCommandHandler : IRequestHandler<CreateLeccionCommand,
             Descripcion = request.Descripcion,
             Tema = request.Tema,
             NumeroPreguntas = 0,
-            FechaCreacion = _dateTime.UtcNow,
+            FechaCreacion = ahora,
             FechaProgramada = request.FechaProgramada,
-            FechaDisponibleDesde = request.FechaDisponibleDesde,
+            FechaDisponibleDesde = ahora,
             FechaDisponibleHasta = request.FechaDisponibleHasta,
             Estado = EstadoLeccion.Borrador,
             CreadaConIa = request.CreadaConIa

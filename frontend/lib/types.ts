@@ -95,7 +95,6 @@ export interface CreateLeccionRequest {
   titulo?: string
   descripcion?: string
   creadaConIa?: boolean
-  fechaDisponibleDesde?: string | null
   fechaDisponibleHasta?: string | null
 }
 
@@ -103,7 +102,6 @@ export interface UpdateLeccionRequest {
   titulo: string
   tema?: string
   descripcion?: string
-  fechaDisponibleDesde?: string | null
   fechaDisponibleHasta?: string | null
 }
 

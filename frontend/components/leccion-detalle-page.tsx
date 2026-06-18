@@ -9,7 +9,7 @@ import { Search, X, Check, ChevronLeft, ChevronRight, Eye, AlignJustify } from "
 import { AuthLayout } from "@/components/auth-layout"
 import { CourseSidebar } from "@/components/course-sidebar"
 import { getResultados, getPreguntas, getLecciones, getLeccion, updateLeccion } from "@/lib/api"
-import { formatFechaDisponibilidad, fromDateAndTimeLocal, splitDatetimeLocal } from "@/lib/datetime"
+import { formatFechaDisponibilidad, fromDateAndTimeLocal, splitDatetimeLocal, validateFechaHastaAfterInicio } from "@/lib/datetime"
 import { FechaHoraInput } from "@/components/fecha-hora-input"
 import type { Resultado, Pregunta, Opcion, Leccion } from "@/lib/types"
 import { NuevaLeccionPage } from "@/components/nueva-leccion-page"
@@ -1183,10 +1183,9 @@ export function LeccionDetallePage({
   const [leccion, setLeccion] = useState<Leccion | null>(null)
   const [loadingLeccion, setLoadingLeccion] = useState(true)
   const [editTitle, setEditTitle] = useState("")
-  const [editFechaDesdeDate, setEditFechaDesdeDate] = useState("")
-  const [editFechaDesdeTime, setEditFechaDesdeTime] = useState("")
   const [editFechaHastaDate, setEditFechaHastaDate] = useState("")
   const [editFechaHastaTime, setEditFechaHastaTime] = useState("")
+  const [metaError, setMetaError] = useState<string | null>(null)
   const [savingMeta, setSavingMeta] = useState(false)
 
   useEffect(() => {
@@ -1217,12 +1216,10 @@ export function LeccionDetallePage({
         if (!cancelled) {
           setLeccion(data)
           setEditTitle(data.titulo || data.tema || "")
-          const desde = splitDatetimeLocal(data.fechaDisponibleDesde)
           const hasta = splitDatetimeLocal(data.fechaDisponibleHasta)
-          setEditFechaDesdeDate(desde.date)
-          setEditFechaDesdeTime(desde.time)
           setEditFechaHastaDate(hasta.date)
           setEditFechaHastaTime(hasta.time)
+          setMetaError(null)
         }
       } catch (err) {
         console.error("Error loading lesson detail:", err)
@@ -1269,16 +1266,23 @@ export function LeccionDetallePage({
   }
 
   const displayNum = sequentialNum !== null ? sequentialNum : lessonNumber
+  const inicioDisponibilidad = leccion?.fechaDisponibleDesde ?? leccion?.fechaCreacion
   const displayTitle = leccion?.titulo || leccion?.tema || `Lección #${displayNum}`
 
   const handleSaveLessonMeta = async () => {
     if (!leccion) return
+    const inicio = leccion.fechaDisponibleDesde ?? leccion.fechaCreacion ?? null
+    const fechaError = validateFechaHastaAfterInicio(inicio, editFechaHastaDate, editFechaHastaTime)
+    if (fechaError) {
+      setMetaError(fechaError)
+      return
+    }
     setSavingMeta(true)
+    setMetaError(null)
     try {
       const updated = await updateLeccion(leccion.id, {
         titulo: editTitle.trim() || displayTitle,
         tema: leccion.tema,
-        fechaDisponibleDesde: fromDateAndTimeLocal(editFechaDesdeDate, editFechaDesdeTime, "00:00"),
         fechaDisponibleHasta: fromDateAndTimeLocal(editFechaHastaDate, editFechaHastaTime, "23:59"),
       })
       setLeccion(updated)
@@ -1362,17 +1366,14 @@ export function LeccionDetallePage({
                     className="w-full rounded-xl border border-[#F1D87C]/50 px-3 py-2 text-sm"
                   />
                 </div>
-                <div>
-                  <label className="block text-xs font-bold text-[#9E5A78] uppercase mb-1">Disponible desde</label>
-                  <FechaHoraInput
-                    dateValue={editFechaDesdeDate}
-                    timeValue={editFechaDesdeTime}
-                    onDateChange={setEditFechaDesdeDate}
-                    onTimeChange={setEditFechaDesdeTime}
-                    inputClassName="w-full rounded-xl border border-[#F1D87C]/50 px-3 py-2 text-sm"
-                  />
+                <div className="md:col-span-2">
+                  <p className="text-xs text-[#5B5B5B]">
+                    <span className="font-bold text-[#9E5A78]">Disponible desde: </span>
+                    {formatFechaDisponibilidad(inicioDisponibilidad) ?? "al crear la lección"}
+                    <span className="text-[#C66B86]"> (automático, no editable)</span>
+                  </p>
                 </div>
-                <div>
+                <div className="md:col-span-2">
                   <label className="block text-xs font-bold text-[#9E5A78] uppercase mb-1">Disponible hasta</label>
                   <FechaHoraInput
                     dateValue={editFechaHastaDate}
@@ -1382,6 +1383,9 @@ export function LeccionDetallePage({
                     inputClassName="w-full rounded-xl border border-[#F1D87C]/50 px-3 py-2 text-sm"
                   />
                 </div>
+                {metaError && (
+                  <p className="md:col-span-3 text-xs text-[#d4776a] font-semibold">{metaError}</p>
+                )}
                 <div className="md:col-span-3 flex justify-end">
                   <button
                     onClick={handleSaveLessonMeta}
@@ -1393,14 +1397,14 @@ export function LeccionDetallePage({
                 </div>
               </div>
             )}
-            {leccion?.fechaDisponibleDesde || leccion?.fechaDisponibleHasta ? (
+            {inicioDisponibilidad || leccion?.fechaDisponibleHasta ? (
               <p className="text-xs text-[#5B5B5B]">
                 Ventana de disponibilidad:{" "}
-                {formatFechaDisponibilidad(leccion.fechaDisponibleDesde) ?? "sin inicio"}{" "}
+                {formatFechaDisponibilidad(inicioDisponibilidad) ?? "al crear la lección"}{" "}
                 — {formatFechaDisponibilidad(leccion.fechaDisponibleHasta) ?? "sin cierre"}
               </p>
             ) : (
-              <p className="text-xs text-[#5B5B5B]">Sin restricción de fechas configurada</p>
+              <p className="text-xs text-[#5B5B5B]">Sin fecha de cierre configurada</p>
             )}
           </div>
 

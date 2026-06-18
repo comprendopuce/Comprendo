@@ -57,6 +57,25 @@ export function combineTimeValue(hour: string, minute: string): string {
   return `${h}:${m}`
 }
 
+/** Valida que la fecha fin sea posterior al inicio (creación de la lección). */
+export function validateFechaHastaAfterInicio(
+  inicioIso: string | null | undefined,
+  hastaDate: string,
+  hastaTime: string
+): string | null {
+  if (!hastaDate.trim()) return null
+  const inicio = inicioIso ? new Date(inicioIso) : new Date()
+  if (Number.isNaN(inicio.getTime())) return null
+  const hastaIso = fromDateAndTimeLocal(hastaDate, hastaTime, "23:59")
+  if (!hastaIso) return null
+  const hasta = new Date(hastaIso)
+  if (Number.isNaN(hasta.getTime())) return null
+  if (hasta <= inicio) {
+    return "La fecha y hora de fin debe ser posterior al inicio de la lección."
+  }
+  return null
+}
+
 export function formatFechaDisponibilidad(iso?: string | null): string | null {
   if (!iso) return null
   const d = new Date(iso)

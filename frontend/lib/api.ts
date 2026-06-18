@@ -258,7 +258,7 @@ export async function updateLeccion(
       descripcion: data.descripcion ?? null,
       tema: data.tema ?? data.titulo,
       fechaProgramada: null,
-      fechaDisponibleDesde: data.fechaDisponibleDesde ?? null,
+      fechaDisponibleDesde: null,
       fechaDisponibleHasta: data.fechaDisponibleHasta ?? null,
     }),
   })

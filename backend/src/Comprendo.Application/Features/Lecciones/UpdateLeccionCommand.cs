@@ -4,6 +4,7 @@ using Comprendo.Application.Common.Interfaces;
 using Comprendo.Application.Common.Mappings;
 using Comprendo.Domain.Exceptions;
 using FluentValidation;
+using FluentValidation.Results;
 using MediatR;
 
 namespace Comprendo.Application.Features.Lecciones;
@@ -23,10 +24,6 @@ public class UpdateLeccionCommandValidator : AbstractValidator<UpdateLeccionComm
     {
         RuleFor(x => x.Id).GreaterThan(0);
         RuleFor(x => x.Titulo).NotEmpty().MaximumLength(150);
-        RuleFor(x => x)
-            .Must(x => !x.FechaDisponibleDesde.HasValue || !x.FechaDisponibleHasta.HasValue ||
-                       x.FechaDisponibleHasta > x.FechaDisponibleDesde)
-            .WithMessage("La fecha de fin debe ser posterior a la fecha de inicio.");
     }
 }
 
@@ -58,11 +55,22 @@ public class UpdateLeccionCommandHandler : IRequestHandler<UpdateLeccionCommand,
         var entity = await _repository.GetByIdAsync(request.Id, cancellationToken)
             ?? throw new NotFoundException(nameof(Domain.Entities.Leccion), request.Id);
 
+        var inicio = LeccionDisponibilidad.ObtenerInicioDisponibilidad(entity);
+        var falloRango = LeccionDisponibilidad.ValidarRango(inicio, request.FechaDisponibleHasta);
+        if (falloRango is not null)
+        {
+            throw new ValidationException(new[] { falloRango });
+        }
+
+        if (entity.FechaDisponibleDesde is null)
+        {
+            entity.FechaDisponibleDesde = entity.FechaCreacion;
+        }
+
         entity.Titulo = request.Titulo;
         entity.Descripcion = request.Descripcion;
         entity.Tema = request.Tema;
         entity.FechaProgramada = request.FechaProgramada;
-        entity.FechaDisponibleDesde = request.FechaDisponibleDesde;
         entity.FechaDisponibleHasta = request.FechaDisponibleHasta;
 
         await _repository.UpdateAsync(entity, cancellationToken);

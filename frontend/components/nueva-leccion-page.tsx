@@ -6,7 +6,7 @@ import { ArrowUp, Pencil, Check, X } from "lucide-react"
 import { AuthLayout } from "@/components/auth-layout"
 import { CourseSidebar } from "@/components/course-sidebar"
 import { generateQuestion, createLeccion, createPregunta, getEstudiantes, startEvaluationForStudent, getLeccion, getPreguntas, updatePregunta, changeLeccionEstado, updateLeccion } from "@/lib/api"
-import { fromDateAndTimeLocal, splitDatetimeLocal } from "@/lib/datetime"
+import { fromDateAndTimeLocal, splitDatetimeLocal, validateFechaHastaAfterInicio } from "@/lib/datetime"
 import { FechaHoraInput } from "@/components/fecha-hora-input"
 import type { GeneratedQuestion, Opcion, Estudiante } from "@/lib/types"
 import {
@@ -83,10 +83,9 @@ export function NuevaLeccionPage({
   const [phase, setPhase] = useState<ChatPhase>("ask_input")
   const [topic, setTopic] = useState("")
   const [lessonTitle, setLessonTitle] = useState("")
-  const [fechaDesdeDate, setFechaDesdeDate] = useState("")
-  const [fechaDesdeTime, setFechaDesdeTime] = useState("")
   const [fechaHastaDate, setFechaHastaDate] = useState("")
   const [fechaHastaTime, setFechaHastaTime] = useState("")
+  const [lessonInicioAt, setLessonInicioAt] = useState<string | null>(null)
   const [totalQuestions, setTotalQuestions] = useState(0)
   const [generatedQuestions, setGeneratedQuestions] = useState<GeneratedQuestion[]>([])
   const [publishing, setPublishing] = useState(false)
@@ -138,10 +137,8 @@ export function NuevaLeccionPage({
         if (!cancelled) {
           setTopic(lessonData.tema)
           setLessonTitle(lessonData.titulo || lessonData.tema)
-          const desde = splitDatetimeLocal(lessonData.fechaDisponibleDesde)
+          setLessonInicioAt(lessonData.fechaDisponibleDesde ?? lessonData.fechaCreacion ?? null)
           const hasta = splitDatetimeLocal(lessonData.fechaDisponibleHasta)
-          setFechaDesdeDate(desde.date)
-          setFechaDesdeTime(desde.time)
           setFechaHastaDate(hasta.date)
           setFechaHastaTime(hasta.time)
           setTotalQuestions(questionsData.length)
@@ -296,21 +293,29 @@ export function NuevaLeccionPage({
     }
   }
 
-  const parseFechasDisponibilidad = () => ({
-    fechaDisponibleDesde: fromDateAndTimeLocal(fechaDesdeDate, fechaDesdeTime, "00:00"),
-    fechaDisponibleHasta: fromDateAndTimeLocal(fechaHastaDate, fechaHastaTime, "23:59"),
-  })
+  const parseFechaHasta = () =>
+    fromDateAndTimeLocal(fechaHastaDate, fechaHastaTime, "23:59")
+
+  const validateFechaHasta = () => {
+    const err = validateFechaHastaAfterInicio(lessonInicioAt, fechaHastaDate, fechaHastaTime)
+    if (err) {
+      triggerToast(err)
+      return false
+    }
+    return true
+  }
 
   const buildLeccionPayload = () => ({
     tema: topic,
     titulo: (lessonTitle || topic).trim(),
     creadaConIa: true,
     idDocenteCursoMateria: gradeId,
-    ...parseFechasDisponibilidad(),
+    fechaDisponibleHasta: parseFechaHasta(),
   })
 
   const handleSaveLesson = async () => {
     if (generatedQuestions.length === 0 || saving || publishing) return
+    if (!validateFechaHasta()) return
     setSaving(true)
 
     try {
@@ -320,6 +325,7 @@ export function NuevaLeccionPage({
         // 1. Create the leccion in backend
         const leccion = await createLeccion(buildLeccionPayload())
         activeLessonId = leccion.id
+        setLessonInicioAt(leccion.fechaDisponibleDesde ?? leccion.fechaCreacion ?? null)
 
         // 2. Create each pregunta in backend
         let idx = 1
@@ -338,7 +344,7 @@ export function NuevaLeccionPage({
         await updateLeccion(activeLessonId, {
           titulo: (lessonTitle || topic).trim(),
           tema: topic,
-          ...parseFechasDisponibilidad(),
+          fechaDisponibleHasta: parseFechaHasta(),
         })
         // Update each question in backend
         let idx = 1
@@ -379,6 +385,7 @@ export function NuevaLeccionPage({
 
   const handlePublish = async () => {
     if (generatedQuestions.length === 0 || publishing || saving) return
+    if (!validateFechaHasta()) return
     setPublishing(true)
 
     try {
@@ -389,6 +396,7 @@ export function NuevaLeccionPage({
         // 1. Create the leccion in backend
         const leccion = await createLeccion(buildLeccionPayload())
         activeLessonId = leccion.id
+        setLessonInicioAt(leccion.fechaDisponibleDesde ?? leccion.fechaCreacion ?? null)
 
         // 2. Create each pregunta in backend and collect the created items (with their database IDs)
         let idx = 1
@@ -408,7 +416,7 @@ export function NuevaLeccionPage({
         await updateLeccion(activeLessonId, {
           titulo: (lessonTitle || topic).trim(),
           tema: topic,
-          ...parseFechasDisponibilidad(),
+          fechaDisponibleHasta: parseFechaHasta(),
         })
         // 1. Update questions and collect their updated representations
         let idx = 1
@@ -471,7 +479,7 @@ export function NuevaLeccionPage({
             topic: lessonTitle || topic,
             studentChatId: e.telegramChatId!,
             totalEstudiantes: estudiantesTelegram.length,
-            fechaDisponibleHasta: parseFechasDisponibilidad().fechaDisponibleHasta,
+            fechaDisponibleHasta: parseFechaHasta(),
             preguntas: preguntasParaBot,
           }).catch((err) => {
             console.warn(`No se pudo enviar lección por Telegram a ${e.nombre}:`, err)
@@ -615,17 +623,6 @@ export function NuevaLeccionPage({
               </div>
               <div>
                 <label className="block text-xs font-bold text-[#9E5A78] uppercase tracking-wide mb-1.5">
-                  Disponible desde
-                </label>
-                <FechaHoraInput
-                  dateValue={fechaDesdeDate}
-                  timeValue={fechaDesdeTime}
-                  onDateChange={setFechaDesdeDate}
-                  onTimeChange={setFechaDesdeTime}
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-[#9E5A78] uppercase tracking-wide mb-1.5">
                   Disponible hasta
                 </label>
                 <FechaHoraInput
@@ -634,7 +631,9 @@ export function NuevaLeccionPage({
                   onDateChange={setFechaHastaDate}
                   onTimeChange={setFechaHastaTime}
                 />
-                <p className="text-[10px] text-[#C66B86] mt-1">Deja vacío si no quieres restringir por fechas y horas.</p>
+                <p className="text-[10px] text-[#C66B86] mt-1">
+                  La lección estará disponible desde que la creas o publicas. Opcional: define cuándo cierra.
+                </p>
               </div>
             </div>
           )}
